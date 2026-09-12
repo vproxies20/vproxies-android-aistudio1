@@ -1,0 +1,7 @@
+{
+  "name": "VProxies",
+  "description": "VProxies - Intuitive proxy manager, IP detector, and seamless network switcher.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+
