@@ -8,6 +8,7 @@ export interface ProxyEntity {
   host: string;
   port: number;
   protocol: Protocol;
+  protocols?: Protocol[];
   username?: string;
   password?: string;
   country: string;

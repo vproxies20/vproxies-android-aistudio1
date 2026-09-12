@@ -16,8 +16,8 @@ export const SpeedTrafficCard: React.FC<SpeedTrafficCardProps> = ({
   downloadRate,
   totalUpload,
   totalDownload,
-  uploadHistory = [1200, 1800, 1400, 2900, 2100, 3400, 2600, 3100],
-  downloadHistory = [2400, 4800, 3200, 7100, 5600, 8900, 6800, 9200],
+  uploadHistory = [],
+  downloadHistory = [],
 }) => {
   // Sparkline renderer for SVG
   const renderSparkline = (data: number[], color: string, isActive: boolean) => {

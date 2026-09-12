@@ -12,7 +12,7 @@ import {
   UpdateCheckState,
   VpnStatus,
 } from './types';
-import { DEFAULT_INSTALLED_APPS, StorageService } from './services/storage';
+import { StorageService } from './services/storage';
 import { VProxiesApiService } from './services/vproxiesApi';
 import { Navbar } from './components/Navbar';
 import { BottomNav } from './components/BottomNav';
@@ -21,479 +21,189 @@ import { ProxyManagerTab } from './components/ProxyManagerTab';
 import { LogsTab } from './components/LogsTab';
 import { SettingsTab } from './components/SettingsTab';
 
+import { nativeCall, isNative } from './services/native';
 export const App: React.FC = () => {
-  // Navigation
-  const [activeTab, setActiveTab] = useState<number>(0);
-  const [showLoginPrompt, setShowLoginPrompt] = useState<boolean>(false);
-
-  // Account & Configuration State
-  const [accountInfo, setAccountInfo] = useState<AccountInfo | null>(() => StorageService.getAccount());
-
-  // Core VPN & Proxy State (Zero-residual: only populated if accountInfo exists)
-  const [proxies, setProxies] = useState<ProxyEntity[]>(() => {
-    const acc = StorageService.getAccount();
-    if (!acc) return [];
-    const saved = StorageService.getProxies();
-    if (saved.length > 0) return saved;
-    const generated = VProxiesApiService.generateAccountProxies(acc);
-    StorageService.saveProxies(generated.proxies);
-    return generated.proxies;
-  });
-
-  const [selectedProxy, setSelectedProxy] = useState<ProxyEntity | null>(() => {
-    const acc = StorageService.getAccount();
-    if (!acc) return null;
-    const cur = StorageService.getSelectedProxy();
-    if (cur) return cur;
-    const initial = VProxiesApiService.generateAccountProxies(acc).proxies;
-    return initial[0] || null;
-  });
-
+  const [activeTab, setActiveTab] = useState(0);
+  const [showLoginPrompt, setShowLoginPrompt] = useState(false);
+  const [accountInfo, setAccountInfo] = useState<AccountInfo | null>(null);
+  const [proxies, setProxies] = useState<ProxyEntity[]>([]);
+  const [selectedProxy, setSelectedProxy] = useState<ProxyEntity | null>(null);
   const [vpnStatus, setVpnStatus] = useState<VpnStatus>('DISCONNECTED');
-  const [connectedAt, setConnectedAt] = useState<number>(0);
-  const [connectionDurationMs, setConnectionDurationMs] = useState<number>(0);
-
-  // IP Details
-  const [ipInfo, setIpInfo] = useState<IpInfo>({
-    ip: '14.225.244.112',
-    country: 'Việt Nam',
-    countryCode: 'VN',
-    city: 'Hà Nội',
-    isp: 'Viettel Telecom High-Speed Fiber',
-    isProtected: false,
-  });
-  const [isRefreshingIp, setIsRefreshingIp] = useState<boolean>(false);
-
-  // Traffic Stats
-  const [uploadRate, setUploadRate] = useState<number>(0);
-  const [downloadRate, setDownloadRate] = useState<number>(0);
-  const [totalUpload, setTotalUpload] = useState<number>(1024 * 512);
-  const [totalDownload, setTotalDownload] = useState<number>(1024 * 1024 * 2.4);
-  const [uploadHistory, setUploadHistory] = useState<number[]>([120, 300, 240, 500, 420, 610, 490, 580]);
-  const [downloadHistory, setDownloadHistory] = useState<number[]>([800, 1400, 1100, 2300, 1900, 3200, 2600, 3800]);
-
-  // Logs
-  const [logs, setLogs] = useState<UiLog[]>(() => {
-    const saved = StorageService.getLogs();
-    if (saved.length > 0) return saved;
-    return [
-      {
-        id: 'log-init-1',
-        timestamp: Date.now() - 30000,
-        level: 'INFO',
-        tag: 'VProxiesCore',
-        message: 'Initialized VProxies networking engine & cryptographic tunneling client.',
-      },
-      {
-        id: 'log-init-2',
-        timestamp: Date.now() - 20000,
-        level: 'SUCCESS',
-        tag: 'IpDetector',
-        message: 'Public IP probe confirmed local interface address: 14.225.244.112 (Việt Nam).',
-      },
-    ];
-  });
-
-  const [isAccountBusy, setIsAccountBusy] = useState<boolean>(false);
-  const [routingMode, setRoutingMode] = useState<RoutingMode>(() => StorageService.getRoutingMode());
-  const [selectedApps, setSelectedApps] = useState<string[]>(() => StorageService.getSelectedApps());
-  const [installedApps] = useState<AppInfoItem[]>(DEFAULT_INSTALLED_APPS);
-  const [alwaysOnVpn, setAlwaysOnVpn] = useState<boolean>(() => StorageService.getAlwaysOn());
-  const [dnsOption, setDnsOption] = useState<DnsOption>(() => StorageService.getDnsOption());
-  const [customDnsIp, setCustomDnsIp] = useState<string>(() => StorageService.getCustomDnsIp());
-  const [preventDnsLeaks, setPreventDnsLeaks] = useState<boolean>(() => StorageService.getPreventDnsLeaks());
-  const [dnsThroughProxy, setDnsThroughProxy] = useState<boolean>(() => StorageService.getDnsThroughProxy());
+  const [connectionDurationMs, setConnectionDurationMs] = useState(0);
+  const [ipInfo, setIpInfo] = useState<IpInfo>({ ip: 'Not checked', country: 'Unknown', countryCode: '', city: '', isp: 'Not available', isProtected: false });
+  const [isRefreshingIp, setIsRefreshingIp] = useState(false);
+  const [uploadRate, setUploadRate] = useState(0);
+  const [downloadRate, setDownloadRate] = useState(0);
+  const [totalUpload, setTotalUpload] = useState(0);
+  const [totalDownload, setTotalDownload] = useState(0);
+  const [uploadHistory, setUploadHistory] = useState<number[]>([]);
+  const [downloadHistory, setDownloadHistory] = useState<number[]>([]);
+  const [logs, setLogs] = useState<UiLog[]>([]);
+  const [isAccountBusy, setIsAccountBusy] = useState(false);
+  const [routingMode, setRoutingMode] = useState<RoutingMode>(StorageService.getRoutingMode);
+  const [selectedApps, setSelectedApps] = useState<string[]>(StorageService.getSelectedApps);
+  const [installedApps, setInstalledApps] = useState<AppInfoItem[]>([]);
+  const [alwaysOnVpn, setAlwaysOnVpn] = useState(false);
+  const [dnsOption, setDnsOption] = useState<DnsOption>(StorageService.getDnsOption);
+  const [customDnsIp, setCustomDnsIp] = useState(StorageService.getCustomDnsIp);
+  const [preventDnsLeaks, setPreventDnsLeaks] = useState(StorageService.getPreventDnsLeaks);
+  const [dnsThroughProxy, setDnsThroughProxy] = useState(StorageService.getDnsThroughProxy);
   const [updateCheckState, setUpdateCheckState] = useState<UpdateCheckState>({ status: 'idle' });
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [isPingingAll, setIsPingingAll] = useState(false);
+  const connecting = useRef(false);
+  const nativeSeen = useRef(new Set<string>());
 
-  const [isSyncing, setIsSyncing] = useState<boolean>(false);
-  const [isPingingAll, setIsPingingAll] = useState<boolean>(false);
-
-  // Append UI log
   const addLog = useCallback((level: UiLog['level'], tag: string, message: string) => {
-    const newLog: UiLog = {
-      id: `log-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-      timestamp: Date.now(),
-      level,
-      tag,
-      message,
-    };
-    setLogs((prev) => {
-      const updated = [newLog, ...prev].slice(0, 200);
-      StorageService.saveLogs(updated);
-      return updated;
-    });
+    setLogs(prev => [{ id: crypto.randomUUID(), timestamp: Date.now(), level, tag, message }, ...prev].slice(0, 200));
   }, []);
+  const report = (error: unknown) => addLog('ERROR', 'Android', error instanceof Error ? error.message : String(error));
 
-  // Fetch IP details on launch
   useEffect(() => {
-    let mounted = true;
-    VProxiesApiService.fetchPublicIp(selectedProxy, vpnStatus === 'CONNECTED').then((info) => {
-      if (mounted) {
-        setIpInfo(info);
-        addLog('INFO', 'IpDetector', `Detected current public IP: ${info.ip} (${info.country}, ${info.city})`);
-      }
-    });
-    return () => {
-      mounted = false;
-    };
-  }, []);
-
-  // Timer loop for active VPN duration
-  useEffect(() => {
-    let timer: any;
-    if (vpnStatus === 'CONNECTED') {
-      timer = setInterval(() => {
-        setConnectionDurationMs(Date.now() - connectedAt);
-      }, 1000);
-    } else {
-      setConnectionDurationMs(0);
-    }
-    return () => clearInterval(timer);
-  }, [vpnStatus, connectedAt]);
-
-  // Traffic simulation loop when connected (replicates VProxiesVpnService.kt loop)
-  useEffect(() => {
-    let interval: any;
-    if (vpnStatus === 'CONNECTED') {
-      interval = setInterval(() => {
-        // Random realistic rates between 50 KB/s and 3.5 MB/s with occasional bursts
-        const up = Math.floor(Math.random() * 850000) + 120000;
-        const down = Math.floor(Math.random() * 2600000) + 450000;
-
-        setUploadRate(up);
-        setDownloadRate(down);
-        setTotalUpload((prev) => prev + up);
-        setTotalDownload((prev) => prev + down);
-
-        setUploadHistory((prev) => [...prev.slice(1), up]);
-        setDownloadHistory((prev) => [...prev.slice(1), down]);
-      }, 1000);
-    } else {
-      setUploadRate(0);
-      setDownloadRate(0);
-    }
-    return () => clearInterval(interval);
-  }, [vpnStatus]);
-
-  // Handle Connect / Disconnect
-  const handleToggleConnect = async () => {
-    if (vpnStatus === 'CONNECTED') {
-      // Disconnect
-      setVpnStatus('DISCONNECTED');
-      setConnectedAt(0);
-      setUploadRate(0);
-      setDownloadRate(0);
-      addLog('WARN', 'VProxiesVpn', 'User disconnected proxy tunnel. Network returned to direct interface.');
-
-      // Restore direct IP
-      const directIp = await VProxiesApiService.fetchPublicIp(null, false);
-      setIpInfo(directIp);
-      addLog('INFO', 'IpDetector', `Public IP restored to direct node: ${directIp.ip}`);
-    } else {
-      // Connect
-      const targetProxy = selectedProxy || proxies[0];
-      if (!targetProxy) {
-        addLog('ERROR', 'VProxiesVpn', 'Chưa có proxy khả dụng để kết nối. Vui lòng đăng nhập tài khoản để đồng bộ.');
-        if (!accountInfo) {
-          setShowLoginPrompt(true);
-        }
-        return;
-      }
-
-      setVpnStatus('CONNECTING');
-      addLog('INFO', 'VProxiesVpn', `Initiating handshake with ${targetProxy.name} (${targetProxy.protocol}://${targetProxy.host}:${targetProxy.port})`);
-      addLog('INFO', 'DnsResolver', `Applying DNS server: ${dnsOption} (Leak protection: ${preventDnsLeaks ? 'ENABLED' : 'DISABLED'})`);
-
-      // Handshake latency simulation
-      setTimeout(async () => {
-        const now = Date.now();
-        setVpnStatus('CONNECTED');
-        setConnectedAt(now);
-        addLog('SUCCESS', 'VProxiesVpn', `Secured tunnel established via ${targetProxy.protocol} (${targetProxy.host}:${targetProxy.port}). Traffic encrypted.`);
-
-        // Update IP display to proxy IP
-        const proxyIp = await VProxiesApiService.fetchPublicIp(targetProxy, true);
-        setIpInfo(proxyIp);
-        addLog('SUCCESS', 'IpDetector', `Network exit point verified: ${proxyIp.ip} (${proxyIp.country}, ${proxyIp.city})`);
-      }, 650);
-    }
-  };
-
-  // Handle Proxy Selection
-  const handleSelectProxy = async (proxy: ProxyEntity) => {
-    setSelectedProxy(proxy);
-    StorageService.saveSelectedProxy(proxy);
-
-    // Update isSelected flag in proxies list
-    const updated = proxies.map((p) => ({
-      ...p,
-      isSelected: p.id === proxy.id,
-    }));
-    setProxies(updated);
-    StorageService.saveProxies(updated);
-
-    addLog('INFO', 'ProxyManager', `Active proxy switched to: ${proxy.name} (${proxy.protocol}://${proxy.host}:${proxy.port})`);
-
-    // If already connected, reconnect to the newly selected proxy seamlessly
-    if (vpnStatus === 'CONNECTED') {
-      setVpnStatus('CONNECTING');
-      addLog('INFO', 'VProxiesVpn', `Seamlessly re-routing tunnel to new target: ${proxy.name}...`);
-      setTimeout(async () => {
-        setVpnStatus('CONNECTED');
-        setConnectedAt(Date.now());
-        const newIp = await VProxiesApiService.fetchPublicIp(proxy, true);
-        setIpInfo(newIp);
-        addLog('SUCCESS', 'VProxiesVpn', `Re-route complete. Now secured via ${proxy.name} (${newIp.ip})`);
-      }, 500);
-    }
-  };
-
-  // Handle Protocol Change for a Proxy
-  const handleProtocolChange = (proxy: ProxyEntity, newProtocol: Protocol) => {
-    const updated = proxies.map((p) =>
-      p.id === proxy.id ? { ...p, protocol: newProtocol } : p
-    );
-    setProxies(updated);
-    StorageService.saveProxies(updated);
-
-    if (selectedProxy?.id === proxy.id) {
-      setSelectedProxy({ ...selectedProxy, protocol: newProtocol });
-      StorageService.saveSelectedProxy({ ...selectedProxy, protocol: newProtocol });
-    }
-
-    addLog('INFO', 'ProxyProtocol', `Changed ${proxy.name} protocol to ${newProtocol}`);
-  };
-
-  // Refresh Public IP
-  const handleRefreshIp = async () => {
-    setIsRefreshingIp(true);
-    addLog('INFO', 'IpDetector', 'Probing current public IP address...');
-    try {
-      const info = await VProxiesApiService.fetchPublicIp(selectedProxy, vpnStatus === 'CONNECTED');
-      setIpInfo(info);
-      addLog('SUCCESS', 'IpDetector', `Probed IP: ${info.ip} (${info.country}, ${info.city})`);
-    } catch {
-      addLog('WARN', 'IpDetector', 'IP probe timed out. Keeping current cached record.');
-    } finally {
-      setIsRefreshingIp(false);
-    }
-  };
-
-  // Ping a Single Proxy
-  const handlePingProxy = async (proxy: ProxyEntity) => {
-    addLog('INFO', 'ProxyPing', `Testing ping latency to ${proxy.name} (${proxy.host})...`);
-    const latency = await VProxiesApiService.testProxyLatency(proxy);
-    const updated = proxies.map((p) =>
-      p.id === proxy.id ? { ...p, latencyMs: latency } : p
-    );
-    setProxies(updated);
-    StorageService.saveProxies(updated);
-
-    if (selectedProxy?.id === proxy.id) {
-      setSelectedProxy({ ...selectedProxy, latencyMs: latency });
-      StorageService.saveSelectedProxy({ ...selectedProxy, latencyMs: latency });
-    }
-
-    addLog('SUCCESS', 'ProxyPing', `Ping response from ${proxy.name}: ${latency} ms`);
-  };
-
-  // Ping All Proxies
-  const handlePingAll = async () => {
-    if (proxies.length === 0 || isPingingAll) return;
-    setIsPingingAll(true);
-    addLog('INFO', 'ProxyPing', `Beginning batch ping test on all ${proxies.length} proxy nodes...`);
-
-    const updated = [...proxies];
-    for (let i = 0; i < updated.length; i++) {
-      const p = updated[i];
-      const latency = await VProxiesApiService.testProxyLatency(p);
-      updated[i] = { ...p, latencyMs: latency };
-      setProxies([...updated]);
-    }
-
-    StorageService.saveProxies(updated);
-    if (selectedProxy) {
-      const cur = updated.find((p) => p.id === selectedProxy.id);
-      if (cur) setSelectedProxy(cur);
-    }
-
-    setIsPingingAll(false);
-    addLog('SUCCESS', 'ProxyPing', `Completed batch latency test on ${proxies.length} nodes.`);
-  };
-
-  // Sync Gateways & Proxies exclusively from VProxies API
-  const handleSyncAll = async () => {
-    if (!accountInfo) {
-      addLog('WARN', 'GatewaySync', 'Chưa đăng nhập tài khoản VProxies. Vui lòng đăng nhập để đồng bộ proxy.');
-      setShowLoginPrompt(true);
+    // Discard sample identities, proxy endpoints and plaintext credentials from the web prototype.
+    for (const key of ['vproxies_account_v1','vproxies_proxies_v1','vproxies_selected_proxy_v1','vproxies_saved_creds','vproxies_logs_v1'])
+      localStorage.removeItem(key);
+    if (!isNative()) {
+      addLog('WARN', 'Preview', 'Web preview only. VPN and account operations require the Android APK.');
       return;
     }
+    let disposed = false;
+    let timer: ReturnType<typeof setTimeout>;
+    let previousState = '';
+    let restored = false;
+    const poll = async () => {
+      try {
+        const s = await nativeCall('snapshot');
+        if (disposed) return;
+        setVpnStatus(s.status);
+        setAccountInfo(s.account);
+        setAlwaysOnVpn(s.alwaysOn);
+        setConnectionDurationMs(s.connectedAt ? Math.max(0, Date.now() - s.connectedAt) : 0);
+        setUploadRate(s.uploadRate); setDownloadRate(s.downloadRate);
+        setUploadHistory(prev => [...prev.slice(-19), s.uploadRate]);
+        setDownloadHistory(prev => [...prev.slice(-19), s.downloadRate]);
+        // UID traffic rates are measured by Android; totals are intentionally not fabricated.
+        setTotalUpload(s.totalUpload || 0); setTotalDownload(s.totalDownload || 0);
+        for (const entry of [...s.logs].reverse()) {
+          if (!nativeSeen.current.has(entry.id)) {
+            nativeSeen.current.add(entry.id);
+            setLogs(prev => [entry, ...prev].slice(0, 200));
+          }
+        }
+        if (s.account && !restored) {
+          restored = true;
+          nativeCall('sync').then(res => {
+            if (!disposed) { setProxies(res.proxies); setSelectedProxy(res.proxies[0] || null); }
+          }).catch(report);
+        }
+        if (!s.account) restored = false;
+        if (s.status !== previousState) {
+          previousState = s.status;
+          setIpInfo(prev => ({ ...prev, isProtected: false }));
+          if (s.status === 'CONNECTED' || s.status === 'DISCONNECTED') {
+            VProxiesApiService.fetchPublicIp().then(info => { if (!disposed) setIpInfo(info); }).catch(report);
+          }
+        }
+      } catch (e) { if (!disposed) report(e); }
+      if (!disposed) timer = setTimeout(poll, 1000);
+    };
+    poll();
+    nativeCall<AppInfoItem[]>('apps').then(apps => { if (!disposed) setInstalledApps(apps); }).catch(report);
+    return () => { disposed = true; clearTimeout(timer); };
+  }, [addLog]);
 
-    setIsSyncing(true);
-    addLog('INFO', 'GatewaySync', `Đang kết nối máy chủ VProxies để đồng bộ danh sách proxy cho tài khoản ${accountInfo.identity}...`);
-
+  const handleToggleConnect = async () => {
+    if (connecting.current) return;
+    connecting.current = true;
     try {
-      const res = await VProxiesApiService.syncUserProxies(accountInfo);
-      setProxies(res.proxies);
-      StorageService.saveProxies(res.proxies);
-
-      if (!selectedProxy || !res.proxies.some((p) => p.id === selectedProxy.id)) {
-        const next = res.proxies[0] || null;
-        setSelectedProxy(next);
-        StorageService.saveSelectedProxy(next);
+      if (vpnStatus === 'CONNECTED' || vpnStatus === 'CONNECTING') await nativeCall('disconnect');
+      else {
+        if (!selectedProxy) { setShowLoginPrompt(true); return; }
+        await nativeCall('connect', { proxy: selectedProxy, routingMode, selectedApps, dnsOption, customDnsIp, preventDnsLeaks, dnsThroughProxy });
       }
-
-      addLog('SUCCESS', 'GatewaySync', `Đồng bộ thành công ${res.proxies.length} node proxy từ dịch vụ VProxies.`);
-    } catch (err: any) {
-      addLog('ERROR', 'GatewaySync', `Đồng bộ thất bại: ${err.message || 'Lỗi kết nối'}`);
-    } finally {
-      setIsSyncing(false);
-    }
+    } catch (e) { report(e); }
+    finally { connecting.current = false; }
   };
-
-  // Delete Proxy
-  const handleDeleteProxy = (proxyId: string) => {
-    const target = proxies.find((p) => p.id === proxyId);
-    const updated = proxies.filter((p) => p.id !== proxyId);
-    setProxies(updated);
-    StorageService.saveProxies(updated);
-
-    if (selectedProxy?.id === proxyId) {
-      const next = updated[0] || null;
-      setSelectedProxy(next);
-      StorageService.saveSelectedProxy(next);
+  const handleSelectProxy = (proxy: ProxyEntity) => {
+    if (vpnStatus === 'CONNECTED' || vpnStatus === 'CONNECTING') {
+      addLog('WARN', 'Proxy', 'Disconnect before selecting another proxy.'); return;
     }
-
-    if (target) {
-      addLog('WARN', 'ProxyManager', `Removed proxy: ${target.name} (${target.host})`);
-    }
+    setSelectedProxy(proxy);
   };
-
-  // Account Sign In
+  const handleProtocolChange = (proxy: ProxyEntity, protocol: Protocol) => {
+    if (vpnStatus === 'CONNECTED' || vpnStatus === 'CONNECTING') {
+      addLog('WARN', 'Proxy', 'Disconnect before changing protocol.'); return;
+    }
+    if (proxy.protocols?.length && !proxy.protocols.includes(protocol)) {
+      addLog('ERROR', 'Proxy', 'This protocol is not advertised by this proxy.'); return;
+    }
+    const updated = { ...proxy, protocol };
+    setProxies(prev => prev.map(p => p.id === proxy.id ? updated : p));
+    if (selectedProxy?.id === proxy.id) setSelectedProxy(updated);
+  };
+  const handleRefreshIp = async () => {
+    setIsRefreshingIp(true);
+    try { setIpInfo(await VProxiesApiService.fetchPublicIp()); }
+    catch (e) { setIpInfo(prev => ({ ...prev, ip: 'Check failed', isProtected: false })); report(e); }
+    finally { setIsRefreshingIp(false); }
+  };
+  const handlePingProxy = async (proxy: ProxyEntity) => {
+    try {
+      const latencyMs = await VProxiesApiService.testProxyLatency(proxy);
+      setProxies(prev => prev.map(p => p.id === proxy.id ? { ...p, latencyMs } : p));
+      setSelectedProxy(prev => prev?.id === proxy.id ? { ...prev, latencyMs } : prev);
+      addLog('INFO', 'TCP check', `Proxy port reachable in ${latencyMs} ms. Authentication is not tested.`);
+    } catch (e) { report(e); }
+  };
+  const handlePingAll = async () => {
+    if (isPingingAll) return;
+    setIsPingingAll(true);
+    try { for (const proxy of proxies) await handlePingProxy(proxy); }
+    finally { setIsPingingAll(false); }
+  };
+  const handleSyncAll = async () => {
+    if (!accountInfo) { setShowLoginPrompt(true); return; }
+    setIsSyncing(true);
+    try {
+      const result = await VProxiesApiService.syncUserProxies(accountInfo);
+      setProxies(result.proxies);
+      setSelectedProxy(prev => result.proxies.find(p => p.id === prev?.id) || result.proxies[0] || null);
+      addLog('SUCCESS', 'API', `Loaded ${result.proxies.length} proxies from your account.`);
+    } catch (e) { report(e); }
+    finally { setIsSyncing(false); }
+  };
   const handleLogin = async (identity: string, pass: string, remember: boolean) => {
     setIsAccountBusy(true);
-    addLog('INFO', 'Auth', `Authenticating account '${identity}' with VProxies API...`);
-
     try {
-      const res = await VProxiesApiService.login(identity, pass);
-      setAccountInfo(res.account);
-      StorageService.saveAccount(res.account);
-      StorageService.saveCredentials(identity, pass, remember);
-
-      setProxies(res.proxies);
-      StorageService.saveProxies(res.proxies);
-
-      if (res.proxies.length > 0) {
-        setSelectedProxy(res.proxies[0]);
-        StorageService.saveSelectedProxy(res.proxies[0]);
-      }
-
-      addLog('SUCCESS', 'Auth', `Authentication successful! Plan: ${res.account.packageName}. Synchronized ${res.proxies.length} proxies.`);
-    } catch {
-      addLog('ERROR', 'Auth', 'Failed to authenticate account. Check credentials.');
-    } finally {
-      setIsAccountBusy(false);
-    }
+      const result = await VProxiesApiService.login(identity, pass, remember);
+      setAccountInfo(result.account);
+      addLog('SUCCESS', 'API', 'Signed in. Loading your proxy list.');
+    } catch (e) { report(e); }
+    finally { setIsAccountBusy(false); }
   };
-
-  // Sign Out
-  const handleLogout = () => {
-    const oldName = accountInfo?.identity;
+  const handleLogout = async () => {
+    try { await nativeCall('logout'); setAccountInfo(null); setProxies([]); setSelectedProxy(null); }
+    catch (e) { report(e); }
+  };
+  const handlePurgeAllProxies = async () => {
+    try { await nativeCall('disconnect'); setProxies([]); setSelectedProxy(null); }
+    catch (e) { report(e); }
+  };
+  const handleDeleteProxy = (id: string) => {
     if (vpnStatus === 'CONNECTED' || vpnStatus === 'CONNECTING') {
-      setVpnStatus('DISCONNECTED');
-      setConnectedAt(0);
-      setUploadRate(0);
-      setDownloadRate(0);
-      addLog('WARN', 'VProxiesVpn', 'Đã ngắt kết nối proxy do tài khoản đã đăng xuất.');
+      addLog('WARN', 'Proxy', 'Disconnect before removing proxies.'); return;
     }
-    setAccountInfo(null);
-    StorageService.saveAccount(null);
-    setProxies([]);
-    StorageService.clearProxies();
-    setSelectedProxy(null);
-    addLog('INFO', 'Auth', `Đã đăng xuất tài khoản ${oldName || ''}. Đã xóa sạch toàn bộ proxy đã sync khỏi thiết bị.`);
+    setProxies(prev => prev.filter(p => p.id !== id));
+    if (selectedProxy?.id === id) setSelectedProxy(null);
   };
-
-  // Purge All Synced Proxies (Zero-Residual Wipe)
-  const handlePurgeAllProxies = () => {
-    if (vpnStatus === 'CONNECTED' || vpnStatus === 'CONNECTING') {
-      setVpnStatus('DISCONNECTED');
-      setConnectedAt(0);
-      setUploadRate(0);
-      setDownloadRate(0);
-      addLog('WARN', 'VProxiesVpn', 'Đã ngắt kết nối do proxy đã bị xoá khỏi thiết bị.');
-    }
-    setProxies([]);
-    setSelectedProxy(null);
-    StorageService.clearProxies();
-    addLog('WARN', 'ProxySecurity', 'Đã xoá sạch 100% danh sách proxy khỏi bộ nhớ thiết bị.');
-  };
-
-  // Save Routing Mode
-  const handleSetRoutingMode = (mode: RoutingMode) => {
-    setRoutingMode(mode);
-    StorageService.saveRoutingMode(mode);
-    const modeNames = ['All Applications', 'Bypass LAN', 'Selected Apps Only'];
-    addLog('INFO', 'Routing', `Routing mode changed to: ${modeNames[mode]}`);
-  };
-
-  // Save Selected Apps
-  const handleSaveSelectedApps = (apps: string[]) => {
-    setSelectedApps(apps);
-    StorageService.saveSelectedApps(apps);
-    addLog('SUCCESS', 'Routing', `Updated split tunneling list: ${apps.length} apps routed through proxy.`);
-  };
-
-  // Always On VPN Toggle
-  const handleSetAlwaysOnVpn = (val: boolean) => {
-    setAlwaysOnVpn(val);
-    StorageService.saveAlwaysOn(val);
-    addLog('INFO', 'VProxiesVpn', `Always-on auto-reconnect setting: ${val ? 'ENABLED' : 'DISABLED'}`);
-  };
-
-  // DNS Option
-  const handleSetDnsOption = (opt: DnsOption) => {
-    setDnsOption(opt);
-    StorageService.saveDnsOption(opt);
-    addLog('INFO', 'DnsResolver', `DNS provider changed to ${opt}`);
-  };
-
-  // Custom DNS IP
-  const handleSetCustomDnsIp = (ip: string) => {
-    setCustomDnsIp(ip);
-    StorageService.saveCustomDnsIp(ip);
-  };
-
-  // DNS Leak Protection
-  const handleSetPreventDnsLeaks = (val: boolean) => {
-    setPreventDnsLeaks(val);
-    StorageService.savePreventDnsLeaks(val);
-    addLog('INFO', 'DnsResolver', `DNS leak prevention: ${val ? 'ACTIVATED' : 'DEACTIVATED'}`);
-  };
-
-  // DNS Through Proxy
-  const handleSetDnsThroughProxy = (val: boolean) => {
-    setDnsThroughProxy(val);
-    StorageService.saveDnsThroughProxy(val);
-    addLog('INFO', 'DnsResolver', `Proxy remote DNS resolution: ${val ? 'ENABLED' : 'DISABLED'}`);
-  };
-
-  // Check for Updates
-  const handleCheckForUpdates = () => {
-    setUpdateCheckState({ status: 'checking' });
-    addLog('INFO', 'Updater', 'Checking for latest VProxies release version...');
-
-    setTimeout(() => {
-      setUpdateCheckState({
-        status: 'available',
-        currentVersion: '1.0.0',
-        latestVersion: '1.0.0',
-        hasNewerVersion: false,
-        changelog: 'Phiên bản mới nhất. Tối ưu hóa hiệu năng SOCKS5/HTTP, hỗ trợ bộ lọc ứng dụng và chống rò rỉ DNS hoàn hảo.',
-      });
-      addLog('SUCCESS', 'Updater', 'Version 1.0.0 is up to date.');
-    }, 600);
-  };
+  const handleSetRoutingMode = (v: RoutingMode) => { setRoutingMode(v); StorageService.saveRoutingMode(v); addLog('INFO','Settings','Routing changes apply on the next connection.'); };
+  const handleSaveSelectedApps = (v: string[]) => { setSelectedApps(v); StorageService.saveSelectedApps(v); };
+  const handleSetDnsOption = (v: DnsOption) => { setDnsOption(v); StorageService.saveDnsOption(v); };
+  const handleSetCustomDnsIp = (v: string) => { setCustomDnsIp(v); StorageService.saveCustomDnsIp(v); };
+  const handleSetPreventDnsLeaks = (v: boolean) => { setPreventDnsLeaks(v); StorageService.savePreventDnsLeaks(v); };
+  const handleSetDnsThroughProxy = (v: boolean) => { setDnsThroughProxy(v); StorageService.saveDnsThroughProxy(v); };
+  const handleSetAlwaysOnVpn = () => { nativeCall('alwaysOn').catch(report); };
+  const handleCheckForUpdates = () => setUpdateCheckState({ status: 'error', message: 'Automatic updates are not configured for this preview APK.' });
 
   return (
     <div className="min-h-screen bg-[#0A0E17] text-slate-100 flex flex-col selection:bg-[#00E5FF] selection:text-[#0A0E17]">
@@ -554,7 +264,7 @@ export const App: React.FC = () => {
             logs={logs}
             onClearLogs={() => {
               setLogs([]);
-              StorageService.saveLogs([]);
+              nativeCall("clearLogs").catch(report);
               addLog('INFO', 'Logs', 'Cleared all event logs.');
             }}
           />

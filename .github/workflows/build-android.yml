@@ -1,0 +1,71 @@
+name: Build VProxies Web UI Android Preview
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, codex/android-web-vpn]
+permissions:
+  contents: read
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Build bundled interface
+        run: |
+          npm ci --ignore-scripts
+          npm run lint
+          npm run build
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: actions/setup-go@v5
+        with:
+          go-version: 1.26.7
+          cache: false
+      - uses: nttld/setup-ndk@v1
+        id: ndk
+        with:
+          ndk-version: r28
+      - name: Get pinned VPN core and Android client
+        run: |
+          git clone --filter=blob:none https://github.com/SagerNet/sing-box.git sing-box
+          git -C sing-box checkout 56f91dfeabd6f4edbd437dfcc1e5b0ebc856b778
+          git -C sing-box submodule update --init clients/android
+          test "$(git -C sing-box/clients/android rev-parse HEAD)" = "af61098358a8141dea71f232b7eaebf4ccee8868"
+      - name: Apply Android integration
+        run: python3 scripts/prepare-upstream.py sing-box
+      - name: Build ARM64 VPN runtime
+        working-directory: sing-box
+        env:
+          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+        run: |
+          make lib_install
+          export PATH="$PATH:$(go env GOPATH)/bin"
+          go run ./cmd/internal/build_libbox -target android -platform android/arm64
+          mkdir -p clients/android/app/libs
+          cp libbox.aar libbox-legacy.aar clients/android/app/libs/
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Compile debug APK
+        working-directory: sing-box/clients/android
+        run: ./gradlew :app:assembleOtherDebug --stacktrace
+      - name: Collect verified ARM64 APK only
+        run: |
+          mkdir -p apk-output
+          mapfile -t apks < <(find sing-box/clients/android/app/build/outputs/apk -name '*arm64-v8a*.apk')
+          test "${#apks[@]}" -eq 1
+          cp "${apks[0]}" apk-output/VProxies-AIStudio-ARM64-preview.apk
+          signer="$(find "$ANDROID_HOME/build-tools" -name apksigner | sort -V | tail -1)"
+          "$signer" verify --verbose apk-output/VProxies-AIStudio-ARM64-preview.apk
+          sha256sum apk-output/*.apk > apk-output/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: VProxies-AIStudio-ARM64-preview
+          path: apk-output/
+          if-no-files-found: error
+          retention-days: 14

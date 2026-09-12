@@ -222,18 +222,13 @@ export class StorageService {
   }
 
   static saveCredentials(identity: string, pass: string, remember: boolean): void {
-    try {
-      if (remember) {
-        localStorage.setItem(KEYS.SAVED_CREDS, JSON.stringify({ identity, pass }));
-      } else {
-        localStorage.removeItem(KEYS.SAVED_CREDS);
-      }
-    } catch {}
+    // Only Android saves remembered credentials, using Keystore after successful login.
+    localStorage.removeItem(KEYS.SAVED_CREDS);
   }
 
   static getSavedCredentials(): { identity: string; pass: string } | null {
     try {
-      const data = localStorage.getItem(KEYS.SAVED_CREDS);
+      const data = window.VProxiesNative?.savedCredentials();
       if (data) return JSON.parse(data);
     } catch {}
     return null;
