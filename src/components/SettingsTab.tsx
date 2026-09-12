@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { StorageService } from '../services/storage';
 import {
   User,
   Shield,
@@ -75,9 +76,10 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
   proxiesCount = 0,
   onPurgeAllProxies,
 }) => {
-  const [identityInput, setIdentityInput] = useState('');
-  const [passwordInput, setPasswordInput] = useState('');
-  const [rememberAccount, setRememberAccount] = useState(true);
+  const [savedLogin] = useState(() => StorageService.getSavedCredentials());
+  const [identityInput, setIdentityInput] = useState(savedLogin?.identity || '');
+  const [passwordInput, setPasswordInput] = useState(savedLogin?.pass || '');
+  const [rememberAccount, setRememberAccount] = useState(Boolean(savedLogin));
   const [showAppPicker, setShowAppPicker] = useState(false);
   const [tempSelectedApps, setTempSelectedApps] = useState<string[]>(selectedApps);
   const [customDnsValue, setCustomDnsValue] = useState(customDnsIp);
@@ -127,7 +129,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
               Tài khoản VProxies
               {accountInfo && (
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/40">
-                  Đang hoạt động
+                  {accountInfo.active ? 'Đang hoạt động' : (accountInfo.status || 'Đã đăng nhập')}
                 </span>
               )}
             </h3>
@@ -426,10 +428,10 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
           <div className="flex items-center justify-between">
             <div>
               <span className="text-xs font-semibold text-slate-200 block">
-                Always-on VPN Kill Switch
+                Android Always-on VPN
               </span>
               <span className="text-[11px] text-slate-400">
-                Chặn toàn bộ truy cập internet nếu kết nối Proxy bị đứt
+                Bật “Block connections without VPN” trong cài đặt Android để chặn khi VPN bị đứt
               </span>
             </div>
             <input
@@ -447,7 +449,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
           {vpnSettingsNotification && (
             <div className="p-2 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-xs flex items-center gap-2">
               <CheckCircle2 className="w-4 h-4 shrink-0" />
-              <span>Đã lưu cài đặt VPN an toàn.</span>
+              <span>Hãy xác nhận Always-on và chặn kết nối không VPN trong cài đặt Android.</span>
             </div>
           )}
         </div>
@@ -458,7 +460,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
         <div className="flex items-center justify-between">
           <div>
             <h3 className="text-sm font-bold text-slate-100">Hệ thống & Cập nhật</h3>
-            <p className="text-[11px] text-slate-400">Phiên bản VProxies Client: v2.4.0-stable</p>
+            <p className="text-[11px] text-slate-400">VProxies AIStudio: v0.6.0-preview</p>
           </div>
           <button
             onClick={onCheckForUpdates}

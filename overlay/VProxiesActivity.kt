@@ -352,9 +352,11 @@ class VProxiesActivity : AppCompatActivity(), ServiceConnection.Callback {
                         .put("tag", "Android").put("message", it.message) }))
             }
             "login" -> apiLock.withLock {
-                val account = withContext(Dispatchers.IO) { api.login(p.getString("identity"), p.getString("password")) }
+                val candidate = ApiClient(getSystemService(ConnectivityManager::class.java))
+                val account = withContext(Dispatchers.IO) { candidate.login(p.getString("identity"), p.getString("password")) }
+                api = candidate
                 webAccount = JSONObject().put("identity", account.userName).put("packageName", account.packageName)
-                    .put("remainingDays", account.remainingDays)
+                    .put("remainingDays", account.remainingDays).put("active", account.active).put("status", account.status)
                 if (p.optBoolean("remember")) secureStore.write("web_login",
                     JSONObject().put("identity", p.getString("identity")).put("pass", p.getString("password")).toString())
                 else secureStore.remove("web_login")
@@ -733,6 +735,7 @@ class VProxiesActivity : AppCompatActivity(), ServiceConnection.Callback {
     }
 
     private suspend fun installProfile(name: String, config: String) = withContext(Dispatchers.IO) {
+        io.nekohasekai.libbox.Libbox.checkConfig(config)
         val file = File(filesDir, "vproxies-managed.json")
         file.writeText(config)
         file.setReadable(false, false)
@@ -954,11 +957,8 @@ class VProxiesActivity : AppCompatActivity(), ServiceConnection.Callback {
         if (!connection.host.matches(Regex("^[0-9a-fA-F:.]+$"))) proxy.put("domain_resolver", "dns-direct")
 
         val direct = JSONObject().put("type", "direct").put("tag", "direct")
-        val block = JSONObject().put("type", "block").put("tag", "block")
-        // Do not use Android's local resolver from inside the TUN. Once the VPN owns
-        // the default route that resolver can call back into the TUN and leave Chrome
-        // at DNS_PROBE_STARTED forever. An IP-literal DoH endpoint needs no bootstrap
-        // lookup and its traffic is explicitly routed outside the proxy below.
+        // Explicit IP-literal DNS avoids Android local resolver recursion inside the TUN.
+        // DNS uses TCP; users can route it through their proxy with the dedicated option.
         val dnsServers = JSONArray().put(
             JSONObject().put("type", "tcp").put("tag", "dns-direct").put("server", dnsAddress),
         )
@@ -976,6 +976,10 @@ class VProxiesActivity : AppCompatActivity(), ServiceConnection.Callback {
             .put(JSONObject().put("port", 53).put("action", "hijack-dns"))
         if (preventDnsLeaks) {
             routeRules.put(JSONObject().put("port", 853).put("action", "reject"))
+        }
+        if (protocol != "socks5") {
+            // TCP-only proxies cannot carry QUIC or arbitrary UDP. Reject so applications can fall back.
+            routeRules.put(JSONObject().put("network", "udp").put("action", "reject"))
         }
         if (routingMode == 1) {
             routeRules.put(JSONObject().put("ip_is_private", true).put("action", "route").put("outbound", "direct"))
@@ -999,7 +1003,7 @@ class VProxiesActivity : AppCompatActivity(), ServiceConnection.Callback {
                         .put("strict_route", preventDnsLeaks).put("stack", "mixed"),
                 ),
             )
-            .put("outbounds", JSONArray().put(proxy).put(direct).put(block))
+            .put("outbounds", JSONArray().put(proxy).put(direct))
             .put(
                 "route",
                 JSONObject().put("rules", routeRules).put("final", finalOutbound)

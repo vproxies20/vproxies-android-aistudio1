@@ -4,6 +4,7 @@
 from pathlib import Path
 import shutil
 import sys
+import xml.etree.ElementTree as ET
 
 
 EXPECTED_CORE = "56f91dfeabd6f4edbd437dfcc1e5b0ebc856b778"
@@ -107,6 +108,23 @@ def main() -> None:
         '<category android:name="android.intent.category.LAUNCHER" /></intent></queries>\n'
         "    <application",
     )
+
+    # No backup of active proxy credentials, and no unused camera/location/install permissions.
+    ns = "{http://schemas.android.com/apk/res/android}"
+    ET.register_namespace("android", "http://schemas.android.com/apk/res/android")
+    ET.register_namespace("tools", "http://schemas.android.com/tools")
+    tree = ET.parse(manifest)
+    document = tree.getroot()
+    unused = {"CAMERA", "ACCESS_COARSE_LOCATION", "ACCESS_FINE_LOCATION", "ACCESS_BACKGROUND_LOCATION",
+              "WRITE_EXTERNAL_STORAGE", "QUERY_ALL_PACKAGES", "REQUEST_INSTALL_PACKAGES"}
+    for permission in list(document.findall("uses-permission")):
+        if permission.get(ns + "name", "").removeprefix("android.permission.") in unused:
+            document.remove(permission)
+    application = document.find("application")
+    application.set(ns + "allowBackup", "false")
+    application.attrib.pop(ns + "dataExtractionRules", None)
+    application.attrib.pop(ns + "fullBackupContent", None)
+    tree.write(manifest, encoding="utf-8", xml_declaration=True)
 
     (client / "version.properties").write_text(
         "VERSION_CODE=1\nVERSION_NAME=0.6.0-preview\nGO_VERSION=go1.26.7\n",

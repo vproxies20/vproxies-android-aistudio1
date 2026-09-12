@@ -38,6 +38,8 @@ export interface UiLog {
 }
 
 export interface AccountInfo {
+  active?: boolean;
+  status?: string;
   identity: string;
   packageName: string;
   remainingDays: number;
