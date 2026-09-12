@@ -170,7 +170,7 @@ class VProxiesActivity : AppCompatActivity(), ServiceConnection.Callback {
                 Status.Stopping -> setStatus("Disconnecting VPN…")
                 Status.Stopped -> if (previous != Status.Stopped) {
                     ui.connectedAt = 0L
-                    setStatus("VPN disconnected.")
+                    if (!ui.statusError) setStatus("VPN disconnected.")
                 }
             }
         }
@@ -343,6 +343,7 @@ class VProxiesActivity : AppCompatActivity(), ServiceConnection.Callback {
                     ui.statusError -> "ERROR"
                     else -> "DISCONNECTED"
                 }).put("error", if (ui.statusError) ui.statusMessage else "")
+                    .put("message", ui.statusMessage)
                     .put("connectedAt", ui.connectedAt).put("uploadRate", up).put("downloadRate", down)
                     .put("totalUpload", if (coreStatus == Status.Started && trafficStartTx >= 0) (tx-trafficStartTx).coerceAtLeast(0) else 0)
                     .put("totalDownload", if (coreStatus == Status.Started && trafficStartRx >= 0) (rx-trafficStartRx).coerceAtLeast(0) else 0)
@@ -772,6 +773,7 @@ class VProxiesActivity : AppCompatActivity(), ServiceConnection.Callback {
 
     private fun requestVpnPermission() {
         if (pendingConfig == null) return
+        setStatus("Waiting for Android VPN permission…")
         val intent = VpnService.prepare(this)
         if (intent == null) startCore() else vpnPermission.launch(intent)
     }

@@ -29,6 +29,7 @@ export const App: React.FC = () => {
   const [proxies, setProxies] = useState<ProxyEntity[]>([]);
   const [selectedProxy, setSelectedProxy] = useState<ProxyEntity | null>(null);
   const [vpnStatus, setVpnStatus] = useState<VpnStatus>('DISCONNECTED');
+  const [connectionNotice, setConnectionNotice] = useState('');
   const [connectionDurationMs, setConnectionDurationMs] = useState(0);
   const [ipInfo, setIpInfo] = useState<IpInfo>({ ip: 'Not checked', country: 'Unknown', countryCode: '', city: '', isp: 'Not available', isProtected: false });
   const [isRefreshingIp, setIsRefreshingIp] = useState(false);
@@ -76,6 +77,9 @@ export const App: React.FC = () => {
         const s = await nativeCall('snapshot');
         if (disposed) return;
         setVpnStatus(s.status);
+        if (s.error) setConnectionNotice(s.error);
+        else if (s.status === 'CONNECTED') setConnectionNotice('VPN connected.');
+        else if (s.status === 'CONNECTING' && s.message) setConnectionNotice(s.message);
         setAccountInfo(s.account);
         setAlwaysOnVpn(s.alwaysOn);
         setConnectionDurationMs(s.connectedAt ? Math.max(0, Date.now() - s.connectedAt) : 0);
@@ -113,15 +117,31 @@ export const App: React.FC = () => {
   }, [addLog]);
 
   const handleToggleConnect = async () => {
-    if (connecting.current) return;
+    if (connecting.current) {
+      setConnectionNotice('Still requesting connection details. Please wait for the result.');
+      return;
+    }
     connecting.current = true;
     try {
-      if (vpnStatus === 'CONNECTED' || vpnStatus === 'CONNECTING') await nativeCall('disconnect');
-      else {
-        if (!selectedProxy) { setShowLoginPrompt(true); return; }
-        await nativeCall('connect', { proxy: selectedProxy, routingMode, selectedApps, dnsOption, customDnsIp, preventDnsLeaks, dnsThroughProxy });
+      if (vpnStatus === 'CONNECTED' || vpnStatus === 'CONNECTING') {
+        setConnectionNotice('Stopping VPN…');
+        await nativeCall('disconnect');
+        setConnectionNotice('VPN stop requested.');
       }
-    } catch (e) { report(e); }
+      else {
+        if (!accountInfo) { setShowLoginPrompt(true); return; }
+        if (!selectedProxy) {
+          setConnectionNotice('No proxy selected. Open Proxies, sync the list and select a proxy.');
+          return;
+        }
+        setConnectionNotice('Requesting connection details…');
+        await nativeCall('connect', { proxy: selectedProxy, routingMode, selectedApps, dnsOption, customDnsIp, preventDnsLeaks, dnsThroughProxy });
+        setConnectionNotice('Approve the Android VPN permission prompt to continue.');
+      }
+    } catch (e) {
+      setConnectionNotice(e instanceof Error ? e.message : String(e));
+      report(e);
+    }
     finally { connecting.current = false; }
   };
   const handleSelectProxy = (proxy: ProxyEntity) => {
@@ -215,6 +235,12 @@ export const App: React.FC = () => {
 
       {/* Main Tab Content */}
       <main className="flex-1 max-w-2xl w-full mx-auto p-4 pt-3">
+        {connectionNotice && (
+          <div role="status" aria-live="polite" className="mb-3 rounded-xl border border-amber-400/40 bg-[#162032] p-3 text-sm text-amber-100 break-words">
+            {connectionNotice}
+            <button onClick={() => setActiveTab(2)} className="ml-3 underline text-[#00E5FF]">View logs</button>
+          </div>
+        )}
         {activeTab === 0 && (
           <DashboardTab
             vpnStatus={vpnStatus}
