@@ -71,15 +71,19 @@ export const App: React.FC = () => {
     let disposed = false;
     let timer: ReturnType<typeof setTimeout>;
     let previousState = '';
+    let previousMessage = '';
+    let networkCheck = 0;
     let restored = false;
     const poll = async () => {
       try {
         const s = await nativeCall('snapshot');
         if (disposed) return;
         setVpnStatus(s.status);
-        if (s.error) setConnectionNotice(s.error);
-        else if (s.status === 'CONNECTED') setConnectionNotice('VPN connected.');
-        else if (s.status === 'CONNECTING' && s.message) setConnectionNotice(s.message);
+        const message = s.error || s.message || '';
+        if (message !== previousMessage) {
+          previousMessage = message;
+          if (message) setConnectionNotice(message);
+        }
         setAccountInfo(s.account);
         setAlwaysOnVpn(s.alwaysOn);
         setConnectionDurationMs(s.connectedAt ? Math.max(0, Date.now() - s.connectedAt) : 0);
@@ -103,9 +107,12 @@ export const App: React.FC = () => {
         if (!s.account) restored = false;
         if (s.status !== previousState) {
           previousState = s.status;
+          const check = ++networkCheck;
           setIpInfo(prev => ({ ...prev, isProtected: false }));
           if (s.status === 'CONNECTED' || s.status === 'DISCONNECTED') {
-            VProxiesApiService.fetchPublicIp().then(info => { if (!disposed) setIpInfo(info); }).catch(report);
+            VProxiesApiService.fetchPublicIp().then(info => {
+              if (!disposed && check === networkCheck) setIpInfo(info);
+            }).catch(error => { if (!disposed && check === networkCheck) report(error); });
           }
         }
       } catch (e) { if (!disposed) report(e); }
@@ -135,8 +142,8 @@ export const App: React.FC = () => {
           return;
         }
         setConnectionNotice('Requesting connection details…');
-        await nativeCall('connect', { proxy: selectedProxy, routingMode, selectedApps, dnsOption, customDnsIp, preventDnsLeaks, dnsThroughProxy });
-        setConnectionNotice('Approve the Android VPN permission prompt to continue.');
+        const result = await nativeCall('connect', { proxy: selectedProxy, routingMode, selectedApps, dnsOption, customDnsIp, preventDnsLeaks, dnsThroughProxy });
+        setConnectionNotice(result.message || 'Connection request submitted.');
       }
     } catch (e) {
       setConnectionNotice(e instanceof Error ? e.message : String(e));

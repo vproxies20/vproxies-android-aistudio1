@@ -7,6 +7,11 @@ The native overlay is adapted from vproxies20/vproxies-android commit
 
 ## Preview build
 
+Version 0.6.2 selects VPN mode before binding the service observer, so fresh installs
+receive status and startup errors from VPNService instead of the idle ProxyService.
+Connection notices now reflect native permission/startup state. Stop requests during
+startup are queued until the upstream service can accept them.
+
 Version 0.6.1 integrates the English UI and button interaction updates from main
 commit `bc0c723cbcd0bf33cd5b4f50991f3636b3595190`. Android retains native login,
 API-supplied proxy lists and actual VPN service status; the web prototype's default

@@ -72,6 +72,8 @@ class VProxiesActivity : AppCompatActivity(), ServiceConnection.Callback {
     private var credentialFile: File? = null
     private lateinit var coreConnection: ServiceConnection
     private var coreStatus = Status.Stopped
+    private var startRequested = false
+    private var stopAfterStart = false
     private val ui = VProxiesUiState()
     private lateinit var secureStore: VProxiesSecureStore
     private lateinit var updater: VProxiesUpdater
@@ -131,10 +133,14 @@ class VProxiesActivity : AppCompatActivity(), ServiceConnection.Callback {
         // checks only releases published by vproxies20/vproxies-android.
         Settings.checkUpdateEnabled = false
         Settings.updateCheckPrompted = true
-        coreConnection = ServiceConnection(this, this)
-        coreConnection.connect()
         title = "VProxies"
         buildInterface()
+        // ServiceConnection binds Settings.serviceClass(). The upstream default is
+        // ProxyService; select VPN BEFORE binding so status and alerts come from
+        // the same VPNService that BoxService.start() will launch.
+        Settings.serviceMode = ServiceMode.VPN
+        coreConnection = ServiceConnection(this, this)
+        coreConnection.connect()
         restoreRememberedFields()
         refreshAlwaysOnStatus()
         lifecycleScope.launch {
@@ -154,13 +160,19 @@ class VProxiesActivity : AppCompatActivity(), ServiceConnection.Callback {
     }
 
     override fun onServiceStatusChanged(status: Status) {
-        val previous = coreStatus
-        coreStatus = status
         runOnUiThread {
+            val previous = coreStatus
+            coreStatus = status
+            if (status != Status.Stopped || previous != Status.Stopped) startRequested = false
             ui.coreStatus = status
             when (status) {
                 Status.Starting -> setStatus("Starting VPN…")
                 Status.Started -> {
+                    if (stopAfterStart) {
+                        BoxService.stop()
+                        setStatus("Stopping VPN…")
+                        return@runOnUiThread
+                    }
                     trafficStartTx = android.net.TrafficStats.getUidTxBytes(android.os.Process.myUid()).coerceAtLeast(0)
                     trafficStartRx = android.net.TrafficStats.getUidRxBytes(android.os.Process.myUid()).coerceAtLeast(0)
                     if (previous != Status.Started) ui.connectedAt = System.currentTimeMillis()
@@ -169,6 +181,11 @@ class VProxiesActivity : AppCompatActivity(), ServiceConnection.Callback {
                 }
                 Status.Stopping -> setStatus("Disconnecting VPN…")
                 Status.Stopped -> if (previous != Status.Stopped) {
+                    if (stopAfterStart) {
+                        credentialFile?.delete()
+                        credentialFile = null
+                    }
+                    stopAfterStart = false
                     ui.connectedAt = 0L
                     if (!ui.statusError) setStatus("VPN disconnected.")
                 }
@@ -178,6 +195,8 @@ class VProxiesActivity : AppCompatActivity(), ServiceConnection.Callback {
 
     override fun onServiceAlert(type: Alert, message: String?) {
         runOnUiThread {
+            startRequested = false
+            stopAfterStart = false
             credentialFile?.delete()
             credentialFile = null
             setStatus("VPN error: ${message?.takeIf(String::isNotBlank) ?: type.name}", true)
@@ -339,7 +358,7 @@ class VProxiesActivity : AppCompatActivity(), ServiceConnection.Callback {
                 nativeTx = tx; nativeRx = rx; nativeSample = now
                 JSONObject().put("status", when {
                     coreStatus == Status.Started -> "CONNECTED"
-                    webPreparing || pendingConfig != null || coreStatus == Status.Starting || coreStatus == Status.Stopping -> "CONNECTING"
+                    webPreparing || pendingConfig != null || startRequested || coreStatus == Status.Starting || coreStatus == Status.Stopping -> "CONNECTING"
                     ui.statusError -> "ERROR"
                     else -> "DISCONNECTED"
                 }).put("error", if (ui.statusError) ui.statusMessage else "")
@@ -374,7 +393,7 @@ class VProxiesActivity : AppCompatActivity(), ServiceConnection.Callback {
                 JSONObject().put("proxies", items)
             } }
             "connect" -> {
-                require(!webPreparing && pendingConfig == null && coreStatus == Status.Stopped) { "Disconnect before switching proxy." }
+                require(!webPreparing && !startRequested && pendingConfig == null && coreStatus == Status.Stopped) { "Disconnect before switching proxy." }
                 val generation = ++webGeneration
                 webPreparing = true
                 busy(true, "Requesting connection details…")
@@ -406,7 +425,7 @@ class VProxiesActivity : AppCompatActivity(), ServiceConnection.Callback {
                     require(generation == webGeneration) { "Connection cancelled." }
                     pendingConfig = config
                     requestNotificationThenVpn()
-                    JSONObject()
+                    JSONObject().put("message", ui.statusMessage)
                 } catch (e: Exception) {
                     pendingConfig = null
                     credentialFile?.delete()
@@ -768,26 +787,43 @@ class VProxiesActivity : AppCompatActivity(), ServiceConnection.Callback {
     private fun requestNotificationThenVpn() {
         if (Build.VERSION.SDK_INT >= 33 &&
             ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
-        ) notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS) else requestVpnPermission()
+        ) {
+            setStatus("Waiting for Android notification permission…")
+            notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+        } else requestVpnPermission()
     }
 
     private fun requestVpnPermission() {
         if (pendingConfig == null) return
-        setStatus("Waiting for Android VPN permission…")
         val intent = VpnService.prepare(this)
-        if (intent == null) startCore() else vpnPermission.launch(intent)
+        if (intent == null) startCore() else {
+            setStatus("Waiting for Android VPN permission…")
+            vpnPermission.launch(intent)
+        }
     }
 
     private fun startCore() {
         if (pendingConfig == null) return
-        BoxService.start()
+        startRequested = true
+        stopAfterStart = false
         pendingConfig = null
         setStatus("Starting VPN…")
+        runCatching { BoxService.start() }.onFailure {
+            startRequested = false
+            setStatus("Unable to start VPN: ${it.message}", true)
+        }
     }
 
     private fun stopCore() {
-        BoxService.stop()
         pendingConfig = null
+        if (startRequested || coreStatus == Status.Starting) {
+            // The upstream service accepts stop only once Started. Queue the stop
+            // and keep its config intact until startup has completed.
+            stopAfterStart = true
+            setStatus("Cancelling VPN startup…")
+            return
+        }
+        BoxService.stop()
         credentialFile?.delete()
         credentialFile = null
         setStatus("Disconnect requested.")

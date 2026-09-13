@@ -449,7 +449,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
         <div className="flex items-center justify-between">
           <div>
             <h3 className="text-sm font-bold text-slate-100">System & Updates</h3>
-            <p className="text-[11px] text-slate-400">VProxies AIStudio: v0.6.1-preview</p>
+            <p className="text-[11px] text-slate-400">VProxies AIStudio: v0.6.2-preview</p>
           </div>
           <button
             onClick={onCheckForUpdates}
