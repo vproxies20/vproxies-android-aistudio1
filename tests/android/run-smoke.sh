@@ -19,6 +19,8 @@ adb install -r "${tests[0]}"
 adb shell appops set app.vproxies.aistudio ACTIVATE_VPN allow
 adb shell pm grant app.vproxies.aistudio android.permission.POST_NOTIFICATIONS
 adb logcat -c
-timeout 120 adb shell am instrument -w app.vproxies.aistudio.test/io.nekohasekai.sfa.vproxies.VpnStartupInstrumentation | tee android-evidence/instrumentation.txt
-grep -q 'vproxies_result=PASS' android-evidence/instrumentation.txt
-grep -q 'PASS: Android TUN traffic' android-evidence/proxy.log
+for attempt in 1 2 3; do
+  timeout 120 adb shell am instrument -w app.vproxies.aistudio.test/io.nekohasekai.sfa.vproxies.VpnStartupInstrumentation | tee "android-evidence/instrumentation-$attempt.txt"
+  grep -q 'vproxies_result=PASS' "android-evidence/instrumentation-$attempt.txt"
+done
+test "$(grep -c 'PASS: Android TUN traffic' android-evidence/proxy.log)" -eq 3

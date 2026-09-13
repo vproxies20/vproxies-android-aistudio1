@@ -39,6 +39,9 @@ import io.nekohasekai.sfa.database.Settings
 import io.nekohasekai.sfa.database.TypedProfile
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -72,6 +75,8 @@ class VProxiesActivity : AppCompatActivity(), ServiceConnection.Callback {
     private var credentialFile: File? = null
     private lateinit var coreConnection: ServiceConnection
     private var coreStatus = Status.Stopped
+    private var vpnNetworkReady = false
+    private var networkReadyJob: Job? = null
     private var startRequested = false
     private var stopAfterStart = false
     private var connectionAttemptAt = 0L
@@ -165,6 +170,11 @@ class VProxiesActivity : AppCompatActivity(), ServiceConnection.Callback {
         runOnUiThread {
             val previous = coreStatus
             coreStatus = status
+            if (status != Status.Started) {
+                vpnNetworkReady = false
+                networkReadyJob?.cancel()
+                networkReadyJob = null
+            }
             VProxiesDiagnostics.record(this, "UI_CALLBACK", "${previous.name} -> ${status.name}")
             if (status != Status.Stopped || previous != Status.Stopped) startRequested = false
             ui.coreStatus = status
@@ -178,9 +188,26 @@ class VProxiesActivity : AppCompatActivity(), ServiceConnection.Callback {
                     }
                     trafficStartTx = android.net.TrafficStats.getUidTxBytes(android.os.Process.myUid()).coerceAtLeast(0)
                     trafficStartRx = android.net.TrafficStats.getUidRxBytes(android.os.Process.myUid()).coerceAtLeast(0)
-                    if (previous != Status.Started) ui.connectedAt = System.currentTimeMillis()
-                    setStatus("VPN connected. Checking Internet access…")
-                    verifyTunnelInternet()
+                    if (!vpnNetworkReady && networkReadyJob?.isActive != true) {
+                        setStatus("VPN runtime started. Waiting for Android network…")
+                        networkReadyJob = lifecycleScope.launch {
+                            try {
+                                VProxiesNetwork.awaitVpnNetwork(getSystemService(ConnectivityManager::class.java))
+                                if (coreStatus != Status.Started) return@launch
+                                vpnNetworkReady = true
+                                ui.connectedAt = System.currentTimeMillis()
+                                VProxiesDiagnostics.record(this@VProxiesActivity, "NETWORK_READY", "Android VPN network is available to this app")
+                                setStatus("VPN connected. Checking Internet access…")
+                                verifyTunnelInternet()
+                            } catch (error: TimeoutCancellationException) {
+                                failNetworkStartup("Android did not make the VPN network available within 15 seconds.")
+                            } catch (error: CancellationException) {
+                                throw error
+                            } catch (error: Exception) {
+                                failNetworkStartup("Android VPN network failed: ${error.message}")
+                            }
+                        }
+                    }
                 }
                 Status.Stopping -> setStatus("Disconnecting VPN…")
                 Status.Stopped -> if (previous != Status.Stopped) {
@@ -367,9 +394,9 @@ class VProxiesActivity : AppCompatActivity(), ServiceConnection.Callback {
                 val down = if (nativeSample > 0 && coreStatus == Status.Started) (rx-nativeRx).coerceAtLeast(0)*1000/elapsed else 0
                 nativeTx = tx; nativeRx = rx; nativeSample = now
                 JSONObject().put("status", when {
-                    coreStatus == Status.Started -> "CONNECTED"
-                    webPreparing || pendingConfig != null || startRequested || coreStatus == Status.Starting || coreStatus == Status.Stopping -> "CONNECTING"
+                    coreStatus == Status.Started && vpnNetworkReady -> "CONNECTED"
                     ui.statusError -> "ERROR"
+                    webPreparing || pendingConfig != null || startRequested || coreStatus == Status.Starting || coreStatus == Status.Stopping || coreStatus == Status.Started -> "CONNECTING"
                     else -> "DISCONNECTED"
                 }).put("appVersion", io.nekohasekai.sfa.BuildConfig.VERSION_NAME)
                     .put("error", if (ui.statusError) ui.statusMessage else "")
@@ -464,10 +491,10 @@ class VProxiesActivity : AppCompatActivity(), ServiceConnection.Callback {
             }
             "ip" -> withContext(Dispatchers.IO) {
                 val cm = getSystemService(ConnectivityManager::class.java)
-                val network = cm.allNetworks.firstOrNull { n ->
+                val network = if (coreStatus == Status.Started) VProxiesNetwork.awaitVpnNetwork(cm)
+                else cm.allNetworks.firstOrNull { n ->
                     cm.getNetworkCapabilities(n)?.let { caps ->
-                        if (coreStatus == Status.Started) caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN)
-                        else caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+                        caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
                             caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
                     } == true
                 } ?: error("No suitable network is available for the IP check.")
@@ -830,6 +857,14 @@ class VProxiesActivity : AppCompatActivity(), ServiceConnection.Callback {
             startRequested = false
             setStatus("Unable to start VPN: ${it.message}", true)
         }
+    }
+
+    private fun failNetworkStartup(message: String) {
+        VProxiesDiagnostics.record(this, "NETWORK_ERROR", message, true)
+        setStatus(message, true)
+        BoxService.stop()
+        credentialFile?.delete()
+        credentialFile = null
     }
 
     private fun stopCore() {

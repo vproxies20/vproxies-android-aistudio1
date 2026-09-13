@@ -33,6 +33,7 @@ def main() -> None:
     shutil.copy2(activity_src, activity_dst)
     shutil.copy2(overlay / "VProxiesWebSurface.kt", activity_dst.parent / "VProxiesWebSurface.kt")
     shutil.copy2(overlay / "VProxiesDiagnostics.kt", activity_dst.parent / "VProxiesDiagnostics.kt")
+    shutil.copy2(overlay / "VProxiesNetwork.kt", activity_dst.parent / "VProxiesNetwork.kt")
     test_dst = client / "app/src/androidTest/java/io/nekohasekai/sfa/vproxies"
     test_dst.mkdir(parents=True, exist_ok=True)
     shutil.copy2(overlay.parent / "tests/android/VpnStartupInstrumentation.kt", test_dst / "VpnStartupInstrumentation.kt")

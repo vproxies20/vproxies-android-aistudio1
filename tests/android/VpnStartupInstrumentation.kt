@@ -10,6 +10,7 @@ import android.os.Bundle
 import android.os.SystemClock
 import android.webkit.WebView
 import io.nekohasekai.sfa.constant.Status
+import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
 import org.json.JSONTokener
 import java.io.ByteArrayOutputStream
@@ -34,6 +35,7 @@ class VpnStartupInstrumentation : Instrumentation() {
         val result = Bundle()
         var activity: VProxiesActivity? = null
         try {
+            targetContext.getSharedPreferences("vproxies_startup_diagnostics", 0).edit().clear().commit()
             activity = startActivitySync(Intent(targetContext, VProxiesActivity::class.java)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as VProxiesActivity
             val screen = activity
@@ -78,9 +80,10 @@ class VpnStartupInstrumentation : Instrumentation() {
             }
             check(requests.contains("POST connections")) { "The real API connection parser was not exercised" }
             val cm = screen.getSystemService(ConnectivityManager::class.java)
-            val vpn = cm.allNetworks.firstOrNull {
-                cm.getNetworkCapabilities(it)?.hasTransport(NetworkCapabilities.TRANSPORT_VPN) == true
-            } ?: error("Service reported Started but Android has no VPN network")
+            val vpn = runBlocking { VProxiesNetwork.awaitVpnNetwork(cm) }
+            check(VProxiesDiagnostics.events(screen).toString().contains("NETWORK_READY")) {
+                "Dashboard reported Connected before Android made the VPN network available"
+            }
             // The fixture responds only through HTTP CONNECT; this address has no real origin.
             vpn.socketFactory.createSocket().use { socket ->
                 socket.soTimeout = 10_000
