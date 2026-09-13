@@ -35,17 +35,22 @@ export const PowerDialButton: React.FC<PowerDialButtonProps> = ({
         <button
           id="power_dial_button"
           data-testid="power_dial_button"
-          onClick={onToggleConnect}
-          className={`relative w-44 h-44 rounded-full flex flex-col items-center justify-center transition-all duration-500 shadow-2xl active:scale-95 group ${
+          type="button"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onToggleConnect();
+          }}
+          className={`relative w-44 h-44 rounded-full flex flex-col items-center justify-center transition-all duration-500 shadow-2xl active:scale-95 cursor-pointer select-none group ${
             isConnected
               ? 'bg-gradient-to-b from-[#162942] to-[#0A1A2F] border-4 border-[#00E5FF] shadow-[0_0_40px_rgba(0,229,255,0.4)]'
               : isConnecting
-              ? 'bg-[#162032] border-4 border-amber-400/80 shadow-[0_0_25px_rgba(245,158,11,0.3)]'
+              ? 'bg-[#162032] border-4 border-amber-400/80 shadow-[0_0_25px_rgba(245,158,11,0.3)] cursor-wait'
               : 'bg-gradient-to-b from-[#1E2D44] to-[#121A28] border-4 border-slate-700/80 hover:border-[#00E5FF]/50 shadow-[0_0_20px_rgba(0,0,0,0.5)]'
           }`}
         >
           {/* Inner Circular Track */}
-          <div className="flex flex-col items-center justify-center">
+          <div className="flex flex-col items-center justify-center pointer-events-none">
             {isConnecting ? (
               <Loader2 className="w-12 h-12 text-amber-400 animate-spin mb-1" />
             ) : (
@@ -93,12 +98,17 @@ export const PowerDialButton: React.FC<PowerDialButtonProps> = ({
         <button
           id="action_connect_button"
           data-testid="action_connect_button"
-          onClick={onToggleConnect}
-          className={`px-6 py-2.5 rounded-xl font-bold text-xs tracking-wider transition-all duration-300 active:scale-95 shadow-md flex items-center gap-2 ${
+          type="button"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onToggleConnect();
+          }}
+          className={`px-6 py-2.5 rounded-xl font-bold text-xs tracking-wider transition-all duration-300 active:scale-95 shadow-md flex items-center gap-2 cursor-pointer select-none ${
             isConnected
               ? 'bg-rose-500/20 text-rose-400 border border-rose-500/40 hover:bg-rose-500/30'
               : isConnecting
-              ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+              ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 cursor-wait'
               : 'bg-[#2563EB] text-white hover:bg-blue-600 border border-blue-400/30'
           }`}
         >

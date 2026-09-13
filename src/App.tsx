@@ -333,10 +333,10 @@ export const App: React.FC = () => {
               <Lock className="w-6 h-6" />
             </div>
             <h3 className="text-base font-bold text-center text-slate-100 mb-1.5">
-              Yêu cầu đăng nhập VProxies
+              VProxies Sign In Required
             </h3>
             <p className="text-xs text-center text-slate-400 leading-relaxed mb-5">
-              Ứng dụng chỉ đồng bộ proxy độc quyền từ dịch vụ VProxies của bạn, không lưu sẵn proxy và không kết nối bên thứ 3. Vui lòng đăng nhập tài khoản để đồng bộ proxy.
+              Sign in to your VProxies account to sync your authorized proxies and connect.
             </p>
             <div className="space-y-2">
               <button
@@ -346,13 +346,13 @@ export const App: React.FC = () => {
                 }}
                 className="w-full py-2.5 rounded-xl bg-[#2563EB] hover:bg-blue-600 text-white font-bold text-xs shadow-md transition-all active:scale-95"
               >
-                Đến màn hình Đăng nhập
+                Go to Sign In
               </button>
               <button
                 onClick={() => setShowLoginPrompt(false)}
                 className="w-full py-2 rounded-xl border border-slate-700 hover:border-slate-600 text-slate-300 text-xs font-semibold transition-all"
               >
-                Đóng
+                Close
               </button>
             </div>
           </div>

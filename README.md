@@ -7,6 +7,11 @@ The native overlay is adapted from vproxies20/vproxies-android commit
 
 ## Preview build
 
+Version 0.6.1 integrates the English UI and button interaction updates from main
+commit `bc0c723cbcd0bf33cd5b4f50991f3636b3595190`. Android retains native login,
+API-supplied proxy lists and actual VPN service status; the web prototype's default
+account, example proxies and simulated connection timer are not used in this APK.
+
 GitHub Actions builds an ARM64 debug APK for modern Android phones. The preview uses
 `app.vproxies.aistudio`, separate from the existing VProxies Android installation.
 There is no production release, auto-update channel or stable release signing key yet.
