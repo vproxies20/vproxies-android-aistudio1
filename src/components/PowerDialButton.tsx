@@ -8,6 +8,7 @@ interface PowerDialButtonProps {
   selectedProxy: ProxyEntity | null;
   connectionDurationMs: number;
   onToggleConnect: () => void;
+  onCancelConnect: () => void;
 }
 
 export const PowerDialButton: React.FC<PowerDialButtonProps> = ({
@@ -15,6 +16,7 @@ export const PowerDialButton: React.FC<PowerDialButtonProps> = ({
   selectedProxy,
   connectionDurationMs,
   onToggleConnect,
+  onCancelConnect,
 }) => {
   const isConnected = vpnStatus === 'CONNECTED';
   const isConnecting = vpnStatus === 'CONNECTING';
@@ -36,12 +38,12 @@ export const PowerDialButton: React.FC<PowerDialButtonProps> = ({
           id="power_dial_button"
           data-testid="power_dial_button"
           type="button"
+          disabled={isConnecting}
           onClick={(e) => {
             e.preventDefault();
             e.stopPropagation();
             onToggleConnect();
           }}
-          disabled={isConnecting}
           className={`relative w-44 h-44 rounded-full flex flex-col items-center justify-center transition-all duration-500 shadow-2xl active:scale-95 cursor-pointer select-none group ${
             isConnected
               ? 'bg-gradient-to-b from-[#162942] to-[#0A1A2F] border-4 border-[#00E5FF] shadow-[0_0_40px_rgba(0,229,255,0.4)]'
@@ -87,7 +89,7 @@ export const PowerDialButton: React.FC<PowerDialButtonProps> = ({
               </span>
             ) : (
               <span className="text-[10px] text-slate-400 mt-0.5">
-                {isConnecting ? 'Establishing...' : 'TAP TO CONNECT'}
+                {isConnecting ? 'PLEASE WAIT' : 'TAP TO CONNECT'}
               </span>
             )}
           </div>
@@ -100,12 +102,12 @@ export const PowerDialButton: React.FC<PowerDialButtonProps> = ({
           id="action_connect_button"
           data-testid="action_connect_button"
           type="button"
+          disabled={isConnecting}
           onClick={(e) => {
             e.preventDefault();
             e.stopPropagation();
             onToggleConnect();
           }}
-          disabled={isConnecting}
           className={`px-6 py-2.5 rounded-xl font-bold text-xs tracking-wider transition-all duration-300 active:scale-95 shadow-md flex items-center gap-2 cursor-pointer select-none ${
             isConnected
               ? 'bg-rose-500/20 text-rose-400 border border-rose-500/40 hover:bg-rose-500/30'
@@ -119,10 +121,17 @@ export const PowerDialButton: React.FC<PowerDialButtonProps> = ({
             {isConnected
               ? 'DISCONNECT PROXY'
               : isConnecting
-              ? 'CONNECTING...'
+              ? 'CONNECTING…'
               : 'CONNECT NOW'}
           </span>
         </button>
+
+        {isConnecting && (
+          <button id="cancel_connection_button" type="button" onClick={onCancelConnect}
+            className="mt-3 text-xs text-slate-300 underline underline-offset-4">
+            Cancel connection
+          </button>
+        )}
 
         {selectedProxy && (
           <p className="text-[11px] text-slate-400 mt-2 text-center">

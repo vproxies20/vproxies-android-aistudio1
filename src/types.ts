@@ -8,6 +8,7 @@ export interface ProxyEntity {
   host: string;
   port: number;
   protocol: Protocol;
+  protocols?: Protocol[];
   username?: string;
   password?: string;
   country: string;
@@ -37,6 +38,8 @@ export interface UiLog {
 }
 
 export interface AccountInfo {
+  active?: boolean;
+  status?: string;
   identity: string;
   packageName: string;
   remainingDays: number;

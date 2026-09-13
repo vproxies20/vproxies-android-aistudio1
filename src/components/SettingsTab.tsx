@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { StorageService } from '../services/storage';
 import {
   User,
   Shield,
@@ -25,6 +26,7 @@ import {
 import { AppPickerModal } from './AppPickerModal';
 
 interface SettingsTabProps {
+  appVersion: string;
   accountInfo: AccountInfo | null;
   isAccountBusy: boolean;
   routingMode: RoutingMode;
@@ -51,6 +53,7 @@ interface SettingsTabProps {
 }
 
 export const SettingsTab: React.FC<SettingsTabProps> = ({
+  appVersion,
   accountInfo,
   isAccountBusy,
   routingMode,
@@ -75,9 +78,10 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
   proxiesCount = 0,
   onPurgeAllProxies,
 }) => {
-  const [identityInput, setIdentityInput] = useState('');
-  const [passwordInput, setPasswordInput] = useState('');
-  const [rememberAccount, setRememberAccount] = useState(true);
+  const [savedLogin] = useState(() => StorageService.getSavedCredentials());
+  const [identityInput, setIdentityInput] = useState(savedLogin?.identity || '');
+  const [passwordInput, setPasswordInput] = useState(savedLogin?.pass || '');
+  const [rememberAccount, setRememberAccount] = useState(Boolean(savedLogin));
   const [showAppPicker, setShowAppPicker] = useState(false);
   const [tempSelectedApps, setTempSelectedApps] = useState<string[]>(selectedApps);
   const [customDnsValue, setCustomDnsValue] = useState(customDnsIp);
@@ -127,7 +131,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
               VProxies Account
               {accountInfo && (
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/40">
-                  Active
+                  {accountInfo.active ? 'Active' : (accountInfo.status || 'Signed in')}
                 </span>
               )}
             </h3>
@@ -233,17 +237,6 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                 {isAccountBusy && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
                 <span>Sign In & Sync VProxies</span>
               </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setIdentityInput('saobien');
-                  setPasswordInput('VProxies2026!');
-                }}
-                className="w-full py-2 rounded-xl border border-slate-700 hover:border-[#00E5FF]/40 text-slate-400 hover:text-slate-200 text-[11px] font-medium transition-all text-center"
-              >
-                Quick Fill (saobien)
-              </button>
             </div>
 
             <div className="p-3 rounded-xl bg-[#0F172A] border border-[#00E5FF]/30 space-y-1.5">
@@ -339,7 +332,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
           <Globe className="w-5 h-5 text-[#00E5FF]" />
           <div>
             <h3 className="text-sm font-bold text-slate-100">DNS Security & Leak Protection</h3>
-            <p className="text-[11px] text-slate-400">Prevent ISP inspection and domain lookup leakage</p>
+            <p className="text-[11px] text-slate-400">Choose your DNS resolver and routing options</p>
           </div>
         </div>
 
@@ -395,7 +388,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                 Prevent DNS Leaks
               </span>
               <span className="text-[11px] text-slate-400">
-                Force all DNS queries through encrypted tunnel
+                Intercept port 53 DNS and block DNS-over-TLS on port 853
               </span>
             </div>
             <input
@@ -412,7 +405,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                 Route DNS through Proxy
               </span>
               <span className="text-[11px] text-slate-400">
-                Let remote VProxies nodes resolve hostnames directly
+                Send resolver requests through the selected proxy
               </span>
             </div>
             <input
@@ -426,10 +419,10 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
           <div className="flex items-center justify-between">
             <div>
               <span className="text-xs font-semibold text-slate-200 block">
-                Always-on VPN Kill Switch
+                Android Always-on VPN
               </span>
               <span className="text-[11px] text-slate-400">
-                Block all internet traffic immediately if proxy connection drops
+                Enable “Block connections without VPN” in Android settings to block traffic when VPN is disconnected
               </span>
             </div>
             <input
@@ -447,7 +440,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
           {vpnSettingsNotification && (
             <div className="p-2 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-xs flex items-center gap-2">
               <CheckCircle2 className="w-4 h-4 shrink-0" />
-              <span>Secure VPN settings saved.</span>
+              <span>Confirm Always-on and Block connections without VPN in Android settings.</span>
             </div>
           )}
         </div>
@@ -458,7 +451,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
         <div className="flex items-center justify-between">
           <div>
             <h3 className="text-sm font-bold text-slate-100">System & Updates</h3>
-            <p className="text-[11px] text-slate-400">VProxies Client Version: v2.4.0-stable</p>
+            <p className="text-[11px] text-slate-400">VProxies AIStudio: {appVersion ? `v${appVersion}` : 'Web preview'}</p>
           </div>
           <button
             onClick={onCheckForUpdates}
