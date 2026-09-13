@@ -142,7 +142,7 @@ def main() -> None:
     tree.write(manifest, encoding="utf-8", xml_declaration=True)
 
     (client / "version.properties").write_text(
-        "VERSION_CODE=4\nVERSION_NAME=0.6.3-diagnostic\nGO_VERSION=go1.26.7\n",
+        "VERSION_CODE=5\nVERSION_NAME=0.6.4-preview\nGO_VERSION=go1.26.7\n",
         encoding="utf-8",
     )
 

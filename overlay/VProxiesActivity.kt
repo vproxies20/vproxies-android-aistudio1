@@ -52,7 +52,7 @@ import java.net.UnknownHostException
 import java.net.URL
 
 private const val API_BASE_URL = "https://api.vproxies.app/api/v1/"
-private const val CLIENT_NAME = "VProxies Android 0.5.1"
+private const val CLIENT_NAME = "VProxies Android 0.6.4"
 
 /**
  * VProxies clean UI layered on the official Android libbox/VpnService implementation.
@@ -142,7 +142,7 @@ class VProxiesActivity : AppCompatActivity(), ServiceConnection.Callback {
         Settings.serviceMode = ServiceMode.VPN
         coreConnection = ServiceConnection(this, this)
         coreConnection.connect()
-        VProxiesDiagnostics.record(this, "APP_BIND", "v0.6.3-diagnostic; observing VPNService")
+        VProxiesDiagnostics.record(this, "APP_BIND", "v0.6.4-preview; observing VPNService")
         restoreRememberedFields()
         refreshAlwaysOnStatus()
         lifecycleScope.launch {
@@ -1161,7 +1161,10 @@ private data class EntitlementInfo(
     val remainingDays: Long,
 )
 
-private class ApiClient(private val connectivity: ConnectivityManager) {
+private class ApiClient(
+    private val connectivity: ConnectivityManager,
+    private val connectionFactory: ((URL) -> HttpURLConnection)? = null,
+) {
     private var token = ""
     val signedIn: Boolean get() = token.isNotBlank()
 
@@ -1265,7 +1268,8 @@ private class ApiClient(private val connectivity: ConnectivityManager) {
         }
         // Account/config API traffic must not depend on a currently active proxy tunnel.
         // Binding it to Wi-Fi/cellular also avoids the DNS loop shown when reconnecting.
-        val connection = (physicalNetwork?.openConnection(url) ?: url.openConnection()) as HttpURLConnection
+        val connection = connectionFactory?.invoke(url)
+            ?: ((physicalNetwork?.openConnection(url) ?: url.openConnection()) as HttpURLConnection)
         try {
             connection.instanceFollowRedirects = false
             connection.requestMethod = method

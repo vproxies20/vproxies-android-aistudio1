@@ -8,13 +8,23 @@ import android.net.NetworkCapabilities
 import android.net.VpnService
 import android.os.Bundle
 import android.os.SystemClock
+import android.webkit.WebView
 import io.nekohasekai.sfa.constant.Status
-import kotlinx.coroutines.runBlocking
+import org.json.JSONObject
+import org.json.JSONTokener
+import java.io.ByteArrayOutputStream
+import java.net.HttpURLConnection
 import java.net.InetSocketAddress
-import kotlin.coroutines.intrinsics.suspendCoroutineUninterceptedOrReturn
+import java.net.URL
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.Collections
 
-/** Runs only in the separate test APK. Uses the production config/start/stop methods. */
+/** Real WebView -> JS bridge -> account API parsing -> profile -> Android VPN -> TUN.
+ * Only account HTTP transport is substituted; no private start/config method is invoked.
+ */
 class VpnStartupInstrumentation : Instrumentation() {
+    private val requests = Collections.synchronizedList(mutableListOf<String>())
     override fun onCreate(arguments: Bundle?) {
         super.onCreate(arguments)
         start()
@@ -28,24 +38,28 @@ class VpnStartupInstrumentation : Instrumentation() {
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as VProxiesActivity
             val screen = activity
             check(VpnService.prepare(screen) == null) { "Test setup failed: VPN approval is absent" }
-            val infoClass = Class.forName("io.nekohasekai.sfa.vproxies.ConnectionInfo")
-            val info = infoClass.declaredConstructors.single { it.parameterCount == 7 }.apply {
+            val transport: (URL) -> HttpURLConnection = { url -> FixtureConnection(url) }
+            val apiClass = Class.forName("io.nekohasekai.sfa.vproxies.ApiClient")
+            val api = apiClass.declaredConstructors.single { it.parameterCount == 2 }.apply {
                 isAccessible = true
-            }.newInstance("10.0.2.2", 18080, "", "", "http", listOf("http"), null)
-            val config = VProxiesActivity::class.java.declaredMethods.single { it.name == "buildConfig" }
-                .apply { isAccessible = true }
-                .invoke(screen, info, "http", 0, false, true, false, "", "CLOUDFLARE", "") as String
-            val install = VProxiesActivity::class.java.declaredMethods.single { it.name == "installProfile" }
-                .apply { isAccessible = true }
-            runBlocking {
-                suspendCoroutineUninterceptedOrReturn<Any?> { continuation ->
-                    install.invoke(screen, "CI fixture", config, continuation)
-                }
-            }
+            }.newInstance(screen.getSystemService(ConnectivityManager::class.java), transport)
+            apiClass.getDeclaredField("token").apply { isAccessible = true }.set(api, "ci-session")
             runOnMainSync {
-                field("pendingConfig").set(screen, config)
-                call(screen, "requestVpnPermission")
+                field("api").set(screen, api)
+                field("webAccount").set(screen, JSONObject().put("identity", "CI account")
+                    .put("active", true).put("packageName", "CI").put("remainingDays", 7))
             }
+            val surface = field("webSurface").get(screen)
+            val web = surface.javaClass.getDeclaredMethod("getView").apply { isAccessible = true }.invoke(surface) as WebView
+            awaitCondition("WebView did not sync and select API proxy") {
+                js(web, "document.body.innerText.includes('CI fixture')") == true
+            }
+            js(web, "document.getElementById('power_dial_button').click(); true")
+            awaitCondition("Native Connect did not request VPN startup") {
+                VProxiesDiagnostics.events(screen).toString().contains("START_REQUEST")
+            }
+            // A repeated click after the API response must never become an implicit Stop.
+            js(web, "document.getElementById('power_dial_button').click(); document.getElementById('action_connect_button').click(); true")
             val deadline = SystemClock.elapsedRealtime() + 25_000
             var started = false
             while (SystemClock.elapsedRealtime() < deadline) {
@@ -54,6 +68,15 @@ class VpnStartupInstrumentation : Instrumentation() {
                 SystemClock.sleep(200)
             }
             check(started) { "VPN never reached Started: ${VProxiesDiagnostics.events(screen)}" }
+            awaitCondition("Native VPN started but Dashboard did not show Connected") {
+                js(web, "document.getElementById('action_connect_button').innerText.includes('DISCONNECT PROXY')") == true
+            }
+            val beforeStop = VProxiesDiagnostics.events(screen)
+            check((0 until beforeStop.length()).count { beforeStop.getJSONObject(it).optString("tag") == "BUTTON_CONNECT" } == 1)
+            check((0 until beforeStop.length()).none { beforeStop.getJSONObject(it).optString("tag") == "BUTTON_STOP" }) {
+                "Connect button issued an implicit disconnect: $beforeStop"
+            }
+            check(requests.contains("POST connections")) { "The real API connection parser was not exercised" }
             val cm = screen.getSystemService(ConnectivityManager::class.java)
             val vpn = cm.allNetworks.firstOrNull {
                 cm.getNetworkCapabilities(it)?.hasTransport(NetworkCapabilities.TRANSPORT_VPN) == true
@@ -69,8 +92,8 @@ class VpnStartupInstrumentation : Instrumentation() {
             SystemClock.sleep(3_000)
             runOnMainSync {
                 check(field("coreStatus").get(screen) == Status.Started) { "VPN stopped without a disconnect request" }
-                call(screen, "stopCore")
             }
+            js(web, "document.getElementById('action_connect_button').click(); true")
             val stopDeadline = SystemClock.elapsedRealtime() + 10_000
             var stopped = false
             while (SystemClock.elapsedRealtime() < stopDeadline) {
@@ -80,7 +103,8 @@ class VpnStartupInstrumentation : Instrumentation() {
             }
             check(stopped) { "Explicit disconnect did not stop VPN" }
             result.putString("vproxies_result", "PASS")
-            result.putString("evidence", "Permission already granted; production start reached Started; real TUN traffic crossed HTTP proxy; remained Started; explicit stop reached Stopped")
+            result.putString("evidence", "WebView synced API proxies; real Connect button requested and parsed connection details; repeated taps sent no Stop; Dashboard showed Connected; real TUN traffic crossed HTTP CONNECT; Disconnect button stopped VPN")
+            result.putString("api_requests", requests.toString())
         } catch (error: Throwable) {
             result.putString("vproxies_result", "FAIL")
             result.putString("error", error.stackTraceToString())
@@ -92,6 +116,47 @@ class VpnStartupInstrumentation : Instrumentation() {
     }
 
     private fun field(name: String) = VProxiesActivity::class.java.getDeclaredField(name).apply { isAccessible = true }
-    private fun call(activity: VProxiesActivity, name: String) =
-        VProxiesActivity::class.java.getDeclaredMethod(name).apply { isAccessible = true }.invoke(activity)
+    private fun js(web: WebView, script: String): Any? {
+        val done = CountDownLatch(1)
+        var value: Any? = null
+        runOnMainSync { web.evaluateJavascript(script) { result -> value = JSONTokener(result).nextValue(); done.countDown() } }
+        check(done.await(10, TimeUnit.SECONDS)) { "WebView did not answer: $script" }
+        return value
+    }
+
+    private fun awaitCondition(message: String, predicate: () -> Boolean) {
+        val deadline = SystemClock.elapsedRealtime() + 30_000
+        while (SystemClock.elapsedRealtime() < deadline) {
+            if (predicate()) return
+            SystemClock.sleep(200)
+        }
+        error("$message; ${VProxiesDiagnostics.events(targetContext)}")
+    }
+
+    private inner class FixtureConnection(url: URL) : HttpURLConnection(url) {
+        private val body = ByteArrayOutputStream()
+        override fun connect() = Unit
+        override fun disconnect() = Unit
+        override fun usingProxy() = false
+        override fun getResponseCode() = 200
+        override fun getOutputStream() = body
+        override fun getInputStream(): java.io.InputStream {
+            check(getRequestProperty("Authorization") == "Bearer ci-session")
+            val path = url.path.removePrefix("/api/v1/")
+            requests.add("$requestMethod $path")
+            val json = when (path) {
+                "entitlement" -> """{"data":{"active":true,"status":"active","package_name":"CI","remaining_days":7}}"""
+                "gateways" -> """{"gateways":[{"id":"ci","name":"CI gateway","region":"test"}]}"""
+                "proxies" -> """{"proxies":[{"id":1,"gateway_id":"ci","name":"CI fixture","protocol":"http","protocols":["http"],"status":"online"}]}"""
+                "connections" -> {
+                    check(requestMethod == "POST")
+                    val payload = JSONObject(body.toString("UTF-8"))
+                    check(payload.getString("gateway_id") == "ci" && payload.getLong("proxy_id") == 1L)
+                    """{"connection":{"mode":"direct","gateway_id":"ci","proxy_id":1,"connection":{"host":"10.0.2.2","port":18080,"username":"","password":"","protocol":"http","protocols":["http"]}}}"""
+                }
+                else -> error("Unexpected account API request: $path")
+            }
+            return json.byteInputStream()
+        }
+    }
 }

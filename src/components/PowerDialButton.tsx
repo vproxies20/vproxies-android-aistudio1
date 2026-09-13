@@ -8,6 +8,7 @@ interface PowerDialButtonProps {
   selectedProxy: ProxyEntity | null;
   connectionDurationMs: number;
   onToggleConnect: () => void;
+  onCancelConnect: () => void;
 }
 
 export const PowerDialButton: React.FC<PowerDialButtonProps> = ({
@@ -15,6 +16,7 @@ export const PowerDialButton: React.FC<PowerDialButtonProps> = ({
   selectedProxy,
   connectionDurationMs,
   onToggleConnect,
+  onCancelConnect,
 }) => {
   const isConnected = vpnStatus === 'CONNECTED';
   const isConnecting = vpnStatus === 'CONNECTING';
@@ -36,6 +38,7 @@ export const PowerDialButton: React.FC<PowerDialButtonProps> = ({
           id="power_dial_button"
           data-testid="power_dial_button"
           type="button"
+          disabled={isConnecting}
           onClick={(e) => {
             e.preventDefault();
             e.stopPropagation();
@@ -86,7 +89,7 @@ export const PowerDialButton: React.FC<PowerDialButtonProps> = ({
               </span>
             ) : (
               <span className="text-[10px] text-slate-400 mt-0.5">
-                {isConnecting ? 'TAP TO CANCEL' : 'TAP TO CONNECT'}
+                {isConnecting ? 'PLEASE WAIT' : 'TAP TO CONNECT'}
               </span>
             )}
           </div>
@@ -99,6 +102,7 @@ export const PowerDialButton: React.FC<PowerDialButtonProps> = ({
           id="action_connect_button"
           data-testid="action_connect_button"
           type="button"
+          disabled={isConnecting}
           onClick={(e) => {
             e.preventDefault();
             e.stopPropagation();
@@ -117,10 +121,17 @@ export const PowerDialButton: React.FC<PowerDialButtonProps> = ({
             {isConnected
               ? 'DISCONNECT PROXY'
               : isConnecting
-              ? 'CANCEL CONNECTION'
+              ? 'CONNECTING…'
               : 'CONNECT NOW'}
           </span>
         </button>
+
+        {isConnecting && (
+          <button id="cancel_connection_button" type="button" onClick={onCancelConnect}
+            className="mt-3 text-xs text-slate-300 underline underline-offset-4">
+            Cancel connection
+          </button>
+        )}
 
         {selectedProxy && (
           <p className="text-[11px] text-slate-400 mt-2 text-center">

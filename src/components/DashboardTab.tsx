@@ -24,6 +24,7 @@ interface DashboardTabProps {
   onSelectProxy: (proxy: ProxyEntity) => void;
   onProtocolChange: (protocol: Protocol) => void;
   onToggleConnect: () => void;
+  onCancelConnect: () => void;
   onQuickPing: () => void;
   onNavigateToSettings?: () => void;
 }
@@ -46,6 +47,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
   onSelectProxy,
   onProtocolChange,
   onToggleConnect,
+  onCancelConnect,
   onQuickPing,
   onNavigateToSettings,
 }) => {
@@ -73,6 +75,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
         selectedProxy={selectedProxy}
         connectionDurationMs={connectionDurationMs}
         onToggleConnect={onToggleConnect}
+        onCancelConnect={onCancelConnect}
       />
 
       {/* Unauthenticated / No Proxies Notice */}

@@ -83,6 +83,29 @@ test('clicking the SVG icon inside the dial dispatches exactly one Connect', asy
   } finally { await app.close(); }
 });
 
+test('a repeated Connect tap after Android accepts startup must not cancel the VPN', async () => {
+  const app = await mount();
+  try {
+    await app.click('power_dial_button');
+    await app.accept();
+    app.snapshot.status = 'CONNECTING'; await app.tick();
+    await app.click('power_dial_button');
+    await app.click('action_connect_button');
+    assert.equal(app.calls.filter(c => c.method === 'connect').length, 1);
+    assert.equal(app.calls.filter(c => c.method === 'disconnect').length, 0);
+  } finally { await app.close(); }
+});
+
+test('only the explicit Cancel action cancels a pending VPN startup', async () => {
+  const app = await mount();
+  try {
+    await app.click('power_dial_button'); await app.accept();
+    app.snapshot.status = 'CONNECTING'; await app.tick();
+    await app.click('cancel_connection_button');
+    assert.equal(app.calls.filter(c => c.method === 'disconnect').length, 1);
+  } finally { await app.close(); }
+});
+
 test('replays Connecting -> Disconnected from Android without any button stop command', async () => {
   const app = await mount();
   try {
