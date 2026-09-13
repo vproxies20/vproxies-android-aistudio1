@@ -106,6 +106,16 @@ test('only the explicit Cancel action cancels a pending VPN startup', async () =
   } finally { await app.close(); }
 });
 
+test('a service that stops between polls must not leave the UI stuck Connecting', async () => {
+  const app = await mount();
+  try {
+    await app.click('power_dial_button'); await app.accept();
+    app.snapshot.status = 'DISCONNECTED'; app.snapshot.message = 'VPN disconnected.';
+    await app.tick();
+    assert.match(app.host.querySelector('#power_dial_button')!.textContent!, /DISCONNECTED/);
+  } finally { await app.close(); }
+});
+
 test('replays Connecting -> Disconnected from Android without any button stop command', async () => {
   const app = await mount();
   try {

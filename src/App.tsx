@@ -54,8 +54,6 @@ export const App: React.FC = () => {
   const [isSyncing, setIsSyncing] = useState(false);
   const [isPingingAll, setIsPingingAll] = useState(false);
   const connecting = useRef(false);
-  const startupPending = useRef(false);
-  const startupObserved = useRef(false);
   const nativeSeen = useRef(new Set<string>());
 
   const addLog = useCallback((level: UiLog['level'], tag: string, message: string) => {
@@ -81,12 +79,7 @@ export const App: React.FC = () => {
       try {
         const s = await nativeCall('snapshot');
         if (disposed) return;
-        if (startupPending.current) {
-          if (s.status === 'CONNECTING') startupObserved.current = true;
-          if (s.status === 'CONNECTED' || s.status === 'ERROR' ||
-              (s.status === 'DISCONNECTED' && startupObserved.current)) startupPending.current = false;
-        }
-        setVpnStatus(startupPending.current && s.status === 'DISCONNECTED' ? 'CONNECTING' : s.status);
+        setVpnStatus(s.status);
         const message = s.error || s.message || '';
         if (message !== previousMessage) {
           previousMessage = message;
@@ -133,7 +126,7 @@ export const App: React.FC = () => {
   }, [addLog]);
 
   const handleToggleConnect = async () => {
-    if (connecting.current || startupPending.current || vpnStatus === 'CONNECTING') {
+    if (connecting.current || vpnStatus === 'CONNECTING') {
       setConnectionNotice('VPN startup is in progress. Use Cancel connection to stop it.');
       return;
     }
@@ -151,14 +144,11 @@ export const App: React.FC = () => {
           return;
         }
         setConnectionNotice('Requesting connection details…');
-        startupPending.current = true;
-        startupObserved.current = false;
         setVpnStatus('CONNECTING');
         const result = await nativeCall('connect', { proxy: selectedProxy, routingMode, selectedApps, dnsOption, customDnsIp, preventDnsLeaks, dnsThroughProxy });
         setConnectionNotice(result.message || 'Connection request submitted.');
       }
     } catch (e) {
-      startupPending.current = false;
       setConnectionNotice(e instanceof Error ? e.message : String(e));
       report(e);
     }
@@ -167,7 +157,6 @@ export const App: React.FC = () => {
   const handleCancelConnect = async () => {
     try {
       await nativeCall('disconnect');
-      startupPending.current = false;
       setConnectionNotice('Connection cancellation requested.');
     } catch (e) { report(e); }
   };
