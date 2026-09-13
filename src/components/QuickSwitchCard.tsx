@@ -105,8 +105,8 @@ export const QuickSwitchCard: React.FC<QuickSwitchCardProps> = ({
         <div className="absolute top-[102%] left-0 right-0 z-50 mt-1 max-h-64 overflow-y-auto rounded-xl bg-[#162032] border border-[#00E5FF]/30 shadow-2xl p-1.5">
           {allProxies.length === 0 ? (
             <div className="p-4 text-center text-xs text-slate-400 leading-relaxed">
-              <p className="font-semibold text-slate-300 mb-1">Chưa có proxy nào</p>
-              <p className="text-[11px] text-slate-500">Đăng nhập tài khoản VProxies để đồng bộ danh sách proxy cá nhân.</p>
+              <p className="font-semibold text-slate-300 mb-1">No proxies available</p>
+              <p className="text-[11px] text-slate-500">Sign in to your VProxies account to synchronize your personal proxy list.</p>
             </div>
           ) : (
             allProxies.map((proxy) => {

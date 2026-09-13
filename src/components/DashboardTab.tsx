@@ -83,8 +83,8 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
               <Lock className="w-4 h-4" />
             </div>
             <div className="truncate">
-              <h4 className="text-xs font-bold text-slate-100">Chưa có proxy kết nối</h4>
-              <p className="text-[11px] text-slate-400 truncate">Đăng nhập tài khoản để đồng bộ danh sách proxy</p>
+              <h4 className="text-xs font-bold text-slate-100">No Proxy Available</h4>
+              <p className="text-[11px] text-slate-400 truncate">Sign in to your account to synchronize proxy list</p>
             </div>
           </div>
           {onNavigateToSettings && (
@@ -92,7 +92,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
               onClick={onNavigateToSettings}
               className="px-3 py-1.5 rounded-lg bg-[#2563EB] hover:bg-blue-600 text-white text-xs font-bold shrink-0 transition-all shadow-md active:scale-95"
             >
-              Đăng nhập
+              Sign In
             </button>
           )}
         </div>

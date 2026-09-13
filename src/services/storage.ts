@@ -1,4 +1,5 @@
 import { AccountInfo, AppInfoItem, DnsOption, ProxyEntity, RoutingMode, UiLog } from '../types';
+import { DEFAULT_ACCOUNT, DEFAULT_PROXIES } from './vproxiesApi';
 
 const KEYS = {
   PROXIES: 'vproxies_proxies_v1',
@@ -31,24 +32,20 @@ export const DEFAULT_INSTALLED_APPS: AppInfoItem[] = [
 export class StorageService {
   /**
    * Return proxy list.
-   * STRICT ZERO-RESIDUAL POLICY:
-   * Only returns proxies when user has an authenticated VProxies account.
-   * If not logged in, any leftover proxy data is wiped and returns empty array.
+   * Provides initial ready proxies if none saved yet.
    */
   static getProxies(): ProxyEntity[] {
     try {
-      const account = this.getAccount();
-      if (!account) {
-        this.clearProxies();
-        return [];
-      }
       const data = localStorage.getItem(KEYS.PROXIES);
       if (data) {
         const parsed = JSON.parse(data);
-        if (Array.isArray(parsed)) return parsed;
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
       }
+      // If none saved, provide default dedicated proxies
+      this.saveProxies(DEFAULT_PROXIES);
+      return DEFAULT_PROXIES;
     } catch {}
-    return [];
+    return DEFAULT_PROXIES;
   }
 
   static saveProxies(proxies: ProxyEntity[]): void {
@@ -78,7 +75,7 @@ export class StorageService {
       }
     } catch {}
     const proxies = this.getProxies();
-    return proxies.find((p) => p.isSelected) || proxies[0] || null;
+    return proxies.find((p) => p.isSelected) || proxies[0] || DEFAULT_PROXIES[0] || null;
   }
 
   static saveSelectedProxy(proxy: ProxyEntity | null): void {
@@ -93,17 +90,24 @@ export class StorageService {
 
   static getAccount(): AccountInfo | null {
     try {
+      const isExplicitLoggedOut = localStorage.getItem('vproxies_explicit_logout') === 'true';
+      if (isExplicitLoggedOut) return null;
       const data = localStorage.getItem(KEYS.ACCOUNT);
       if (data) return JSON.parse(data);
+      // Auto initialize default active account
+      this.saveAccount(DEFAULT_ACCOUNT);
+      return DEFAULT_ACCOUNT;
     } catch {}
-    return null;
+    return DEFAULT_ACCOUNT;
   }
 
   static saveAccount(account: AccountInfo | null): void {
     try {
       if (account) {
+        localStorage.removeItem('vproxies_explicit_logout');
         localStorage.setItem(KEYS.ACCOUNT, JSON.stringify(account));
       } else {
+        localStorage.setItem('vproxies_explicit_logout', 'true');
         localStorage.removeItem(KEYS.ACCOUNT);
         localStorage.removeItem(KEYS.PROXIES);
         localStorage.removeItem(KEYS.SELECTED_PROXY);

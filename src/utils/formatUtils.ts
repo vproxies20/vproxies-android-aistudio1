@@ -11,7 +11,7 @@ export class FormatUtils {
     if (!countryCode) return 'Global';
     const code = countryCode.toUpperCase().trim();
     const names: Record<string, string> = {
-      VN: 'Việt Nam',
+      VN: 'Vietnam',
       SG: 'Singapore',
       US: 'United States',
       JP: 'Japan',

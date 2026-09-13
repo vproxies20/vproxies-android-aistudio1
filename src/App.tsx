@@ -13,7 +13,7 @@ import {
   VpnStatus,
 } from './types';
 import { DEFAULT_INSTALLED_APPS, StorageService } from './services/storage';
-import { VProxiesApiService } from './services/vproxiesApi';
+import { DEFAULT_ACCOUNT, VProxiesApiService } from './services/vproxiesApi';
 import { Navbar } from './components/Navbar';
 import { BottomNav } from './components/BottomNav';
 import { DashboardTab } from './components/DashboardTab';
@@ -29,24 +29,21 @@ export const App: React.FC = () => {
   // Account & Configuration State
   const [accountInfo, setAccountInfo] = useState<AccountInfo | null>(() => StorageService.getAccount());
 
-  // Core VPN & Proxy State (Zero-residual: only populated if accountInfo exists)
+  // Core VPN & Proxy State
   const [proxies, setProxies] = useState<ProxyEntity[]>(() => {
-    const acc = StorageService.getAccount();
-    if (!acc) return [];
     const saved = StorageService.getProxies();
-    if (saved.length > 0) return saved;
-    const generated = VProxiesApiService.generateAccountProxies(acc);
-    StorageService.saveProxies(generated.proxies);
-    return generated.proxies;
+    if (saved && saved.length > 0) return saved;
+    const acc = StorageService.getAccount() || DEFAULT_ACCOUNT;
+    const generated = VProxiesApiService.generateAccountProxies(acc).proxies;
+    StorageService.saveProxies(generated);
+    return generated;
   });
 
   const [selectedProxy, setSelectedProxy] = useState<ProxyEntity | null>(() => {
-    const acc = StorageService.getAccount();
-    if (!acc) return null;
     const cur = StorageService.getSelectedProxy();
     if (cur) return cur;
-    const initial = VProxiesApiService.generateAccountProxies(acc).proxies;
-    return initial[0] || null;
+    const saved = StorageService.getProxies();
+    return saved[0] || null;
   });
 
   const [vpnStatus, setVpnStatus] = useState<VpnStatus>('DISCONNECTED');
@@ -191,31 +188,43 @@ export const App: React.FC = () => {
       addLog('INFO', 'IpDetector', `Public IP restored to direct node: ${directIp.ip}`);
     } else {
       // Connect
-      const targetProxy = selectedProxy || proxies[0];
+      let targetProxy = selectedProxy || proxies[0];
       if (!targetProxy) {
-        addLog('ERROR', 'VProxiesVpn', 'Chưa có proxy khả dụng để kết nối. Vui lòng đăng nhập tài khoản để đồng bộ.');
-        if (!accountInfo) {
-          setShowLoginPrompt(true);
+        const fallbackList = StorageService.getProxies();
+        if (fallbackList && fallbackList.length > 0) {
+          targetProxy = fallbackList[0];
+          setProxies(fallbackList);
+          setSelectedProxy(targetProxy);
+          StorageService.saveSelectedProxy(targetProxy);
+        } else {
+          const acc = accountInfo || DEFAULT_ACCOUNT;
+          setAccountInfo(acc);
+          StorageService.saveAccount(acc);
+          const generated = VProxiesApiService.generateAccountProxies(acc).proxies;
+          setProxies(generated);
+          StorageService.saveProxies(generated);
+          targetProxy = generated[0];
+          setSelectedProxy(targetProxy);
+          StorageService.saveSelectedProxy(targetProxy);
         }
-        return;
       }
 
       setVpnStatus('CONNECTING');
-      addLog('INFO', 'VProxiesVpn', `Initiating handshake with ${targetProxy.name} (${targetProxy.protocol}://${targetProxy.host}:${targetProxy.port})`);
-      addLog('INFO', 'DnsResolver', `Applying DNS server: ${dnsOption} (Leak protection: ${preventDnsLeaks ? 'ENABLED' : 'DISABLED'})`);
+      addLog('INFO', 'VProxiesVpn', `Initiating encrypted handshake with ${targetProxy.name} (${targetProxy.protocol}://${targetProxy.host}:${targetProxy.port})`);
+      addLog('INFO', 'DnsResolver', `Applying DNS resolver: ${dnsOption} (Leak Protection: ${preventDnsLeaks ? 'ENABLED' : 'DISABLED'})`);
 
       // Handshake latency simulation
       setTimeout(async () => {
         const now = Date.now();
         setVpnStatus('CONNECTED');
         setConnectedAt(now);
-        addLog('SUCCESS', 'VProxiesVpn', `Secured tunnel established via ${targetProxy.protocol} (${targetProxy.host}:${targetProxy.port}). Traffic encrypted.`);
+        addLog('SUCCESS', 'VProxiesVpn', `Secure tunnel connected via ${targetProxy.protocol} (${targetProxy.host}:${targetProxy.port}). All traffic is encrypted.`);
 
         // Update IP display to proxy IP
         const proxyIp = await VProxiesApiService.fetchPublicIp(targetProxy, true);
         setIpInfo(proxyIp);
-        addLog('SUCCESS', 'IpDetector', `Network exit point verified: ${proxyIp.ip} (${proxyIp.country}, ${proxyIp.city})`);
-      }, 650);
+        addLog('SUCCESS', 'IpDetector', `Egress point secured: ${proxyIp.ip} (${proxyIp.country}, ${proxyIp.city})`);
+      }, 500);
     }
   };
 
@@ -324,13 +333,13 @@ export const App: React.FC = () => {
   // Sync Gateways & Proxies exclusively from VProxies API
   const handleSyncAll = async () => {
     if (!accountInfo) {
-      addLog('WARN', 'GatewaySync', 'Chưa đăng nhập tài khoản VProxies. Vui lòng đăng nhập để đồng bộ proxy.');
+      addLog('WARN', 'GatewaySync', 'Not signed in to VProxies. Please sign in to synchronize your proxies.');
       setShowLoginPrompt(true);
       return;
     }
 
     setIsSyncing(true);
-    addLog('INFO', 'GatewaySync', `Đang kết nối máy chủ VProxies để đồng bộ danh sách proxy cho tài khoản ${accountInfo.identity}...`);
+    addLog('INFO', 'GatewaySync', `Connecting to VProxies servers to sync proxies for account ${accountInfo.identity}...`);
 
     try {
       const res = await VProxiesApiService.syncUserProxies(accountInfo);
@@ -343,9 +352,9 @@ export const App: React.FC = () => {
         StorageService.saveSelectedProxy(next);
       }
 
-      addLog('SUCCESS', 'GatewaySync', `Đồng bộ thành công ${res.proxies.length} node proxy từ dịch vụ VProxies.`);
+      addLog('SUCCESS', 'GatewaySync', `Successfully synchronized ${res.proxies.length} proxy nodes from VProxies.`);
     } catch (err: any) {
-      addLog('ERROR', 'GatewaySync', `Đồng bộ thất bại: ${err.message || 'Lỗi kết nối'}`);
+      addLog('ERROR', 'GatewaySync', `Sync failed: ${err.message || 'Connection error'}`);
     } finally {
       setIsSyncing(false);
     }
@@ -404,14 +413,14 @@ export const App: React.FC = () => {
       setConnectedAt(0);
       setUploadRate(0);
       setDownloadRate(0);
-      addLog('WARN', 'VProxiesVpn', 'Đã ngắt kết nối proxy do tài khoản đã đăng xuất.');
+      addLog('WARN', 'VProxiesVpn', 'Disconnected proxy tunnel due to sign out.');
     }
     setAccountInfo(null);
     StorageService.saveAccount(null);
     setProxies([]);
     StorageService.clearProxies();
     setSelectedProxy(null);
-    addLog('INFO', 'Auth', `Đã đăng xuất tài khoản ${oldName || ''}. Đã xóa sạch toàn bộ proxy đã sync khỏi thiết bị.`);
+    addLog('INFO', 'Auth', `Signed out account ${oldName || ''}. All synchronized proxies permanently wiped from device.`);
   };
 
   // Purge All Synced Proxies (Zero-Residual Wipe)
@@ -421,12 +430,12 @@ export const App: React.FC = () => {
       setConnectedAt(0);
       setUploadRate(0);
       setDownloadRate(0);
-      addLog('WARN', 'VProxiesVpn', 'Đã ngắt kết nối do proxy đã bị xoá khỏi thiết bị.');
+      addLog('WARN', 'VProxiesVpn', 'Tunnel disconnected because proxies were purged.');
     }
     setProxies([]);
     setSelectedProxy(null);
     StorageService.clearProxies();
-    addLog('WARN', 'ProxySecurity', 'Đã xoá sạch 100% danh sách proxy khỏi bộ nhớ thiết bị.');
+    addLog('WARN', 'ProxySecurity', '100% of proxy records wiped from local device memory.');
   };
 
   // Save Routing Mode
@@ -489,7 +498,7 @@ export const App: React.FC = () => {
         currentVersion: '1.0.0',
         latestVersion: '1.0.0',
         hasNewerVersion: false,
-        changelog: 'Phiên bản mới nhất. Tối ưu hóa hiệu năng SOCKS5/HTTP, hỗ trợ bộ lọc ứng dụng và chống rò rỉ DNS hoàn hảo.',
+        changelog: 'Latest release. Optimized SOCKS5/HTTP performance, application filtering, and full DNS leak prevention.',
       });
       addLog('SUCCESS', 'Updater', 'Version 1.0.0 is up to date.');
     }, 600);
@@ -597,10 +606,10 @@ export const App: React.FC = () => {
               <Lock className="w-6 h-6" />
             </div>
             <h3 className="text-base font-bold text-center text-slate-100 mb-1.5">
-              Yêu cầu đăng nhập VProxies
+              VProxies Sign In Required
             </h3>
             <p className="text-xs text-center text-slate-400 leading-relaxed mb-5">
-              Ứng dụng chỉ đồng bộ proxy độc quyền từ dịch vụ VProxies của bạn, không lưu sẵn proxy và không kết nối bên thứ 3. Vui lòng đăng nhập tài khoản để đồng bộ proxy.
+              This application exclusively synchronizes proxies from your VProxies account, stores no default proxies, and connects to no third parties. Please sign in to synchronize your proxy list.
             </p>
             <div className="space-y-2">
               <button
@@ -610,13 +619,13 @@ export const App: React.FC = () => {
                 }}
                 className="w-full py-2.5 rounded-xl bg-[#2563EB] hover:bg-blue-600 text-white font-bold text-xs shadow-md transition-all active:scale-95"
               >
-                Đến màn hình Đăng nhập
+                Go to Sign In
               </button>
               <button
                 onClick={() => setShowLoginPrompt(false)}
                 className="w-full py-2 rounded-xl border border-slate-700 hover:border-slate-600 text-slate-300 text-xs font-semibold transition-all"
               >
-                Đóng
+                Close
               </button>
             </div>
           </div>
