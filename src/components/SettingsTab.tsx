@@ -26,6 +26,7 @@ import {
 import { AppPickerModal } from './AppPickerModal';
 
 interface SettingsTabProps {
+  appVersion: string;
   accountInfo: AccountInfo | null;
   isAccountBusy: boolean;
   routingMode: RoutingMode;
@@ -52,6 +53,7 @@ interface SettingsTabProps {
 }
 
 export const SettingsTab: React.FC<SettingsTabProps> = ({
+  appVersion,
   accountInfo,
   isAccountBusy,
   routingMode,
@@ -449,7 +451,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
         <div className="flex items-center justify-between">
           <div>
             <h3 className="text-sm font-bold text-slate-100">System & Updates</h3>
-            <p className="text-[11px] text-slate-400">VProxies AIStudio: v0.6.3-diagnostic</p>
+            <p className="text-[11px] text-slate-400">VProxies AIStudio: {appVersion ? `v${appVersion}` : 'Web preview'}</p>
           </div>
           <button
             onClick={onCheckForUpdates}

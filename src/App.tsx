@@ -26,6 +26,7 @@ export const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState(0);
   const [showLoginPrompt, setShowLoginPrompt] = useState(false);
   const [accountInfo, setAccountInfo] = useState<AccountInfo | null>(null);
+  const [appVersion, setAppVersion] = useState('');
   const [proxies, setProxies] = useState<ProxyEntity[]>([]);
   const [selectedProxy, setSelectedProxy] = useState<ProxyEntity | null>(null);
   const [vpnStatus, setVpnStatus] = useState<VpnStatus>('DISCONNECTED');
@@ -92,6 +93,7 @@ export const App: React.FC = () => {
           if (message) setConnectionNotice(message);
         }
         setAccountInfo(s.account);
+        setAppVersion(s.appVersion || '');
         setAlwaysOnVpn(s.alwaysOn);
         setConnectionDurationMs(s.connectedAt ? Math.max(0, Date.now() - s.connectedAt) : 0);
         setUploadRate(s.uploadRate); setDownloadRate(s.downloadRate);
@@ -324,6 +326,7 @@ export const App: React.FC = () => {
 
         {activeTab === 3 && (
           <SettingsTab
+            appVersion={appVersion}
             accountInfo={accountInfo}
             isAccountBusy={isAccountBusy}
             routingMode={routingMode}

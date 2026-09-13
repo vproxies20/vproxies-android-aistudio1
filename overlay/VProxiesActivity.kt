@@ -371,7 +371,8 @@ class VProxiesActivity : AppCompatActivity(), ServiceConnection.Callback {
                     webPreparing || pendingConfig != null || startRequested || coreStatus == Status.Starting || coreStatus == Status.Stopping -> "CONNECTING"
                     ui.statusError -> "ERROR"
                     else -> "DISCONNECTED"
-                }).put("error", if (ui.statusError) ui.statusMessage else "")
+                }).put("appVersion", io.nekohasekai.sfa.BuildConfig.VERSION_NAME)
+                    .put("error", if (ui.statusError) ui.statusMessage else "")
                     .put("message", ui.statusMessage)
                     .put("connectedAt", ui.connectedAt).put("uploadRate", up).put("downloadRate", down)
                     .put("totalUpload", if (coreStatus == Status.Started && trafficStartTx >= 0) (tx-trafficStartTx).coerceAtLeast(0) else 0)
