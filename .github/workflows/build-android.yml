@@ -19,7 +19,7 @@ jobs:
         run: |
           npm ci --ignore-scripts
           npm run lint
-          node --import tsx --test tests/native.test.ts
+          node --import tsx --test tests/native.test.ts tests/connect-button.test.tsx
           npm run build
       - uses: actions/setup-java@v4
         with:

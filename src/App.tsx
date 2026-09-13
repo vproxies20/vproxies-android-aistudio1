@@ -92,7 +92,7 @@ export const App: React.FC = () => {
         setDownloadHistory(prev => [...prev.slice(-19), s.downloadRate]);
         // UID traffic rates are measured by Android; totals are intentionally not fabricated.
         setTotalUpload(s.totalUpload || 0); setTotalDownload(s.totalDownload || 0);
-        for (const entry of [...s.logs].reverse()) {
+        for (const entry of [...s.logs].sort((a, b) => a.timestamp - b.timestamp)) {
           if (!nativeSeen.current.has(entry.id)) {
             nativeSeen.current.add(entry.id);
             setLogs(prev => [entry, ...prev].slice(0, 200));

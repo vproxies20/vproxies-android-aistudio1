@@ -32,6 +32,7 @@ def main() -> None:
     activity_dst.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(activity_src, activity_dst)
     shutil.copy2(overlay / "VProxiesWebSurface.kt", activity_dst.parent / "VProxiesWebSurface.kt")
+    shutil.copy2(overlay / "VProxiesDiagnostics.kt", activity_dst.parent / "VProxiesDiagnostics.kt")
     shutil.copytree(overlay.parent / "dist", client / "app/src/main/assets/web", dirs_exist_ok=True)
     shutil.copy2(overlay / "VProxiesFrontend.kt", activity_dst.parent / "VProxiesFrontend.kt")
     shutil.copy2(overlay / "VProxiesSecureStore.kt", activity_dst.parent / "VProxiesSecureStore.kt")
@@ -42,6 +43,17 @@ def main() -> None:
     logo_src = overlay / "ic_vproxies_logo.xml"
     logo_dst = client / "app/src/main/res/drawable/ic_vproxies_logo.xml"
     shutil.copy2(logo_src, logo_dst)
+
+    # Record errors at their source, before asynchronous UI callbacks can be lost.
+    service = client / "app/src/main/java/io/nekohasekai/sfa/bg/BoxService.kt"
+    replace_once(service, "import android.app.NotificationChannel", "import io.nekohasekai.sfa.vproxies.VProxiesDiagnostics\nimport android.app.NotificationChannel")
+    replace_once(service, "internal fun onStartCommand(): Int {", 'internal fun onStartCommand(): Int {\n        VProxiesDiagnostics.record(service, "SERVICE_START", "onStartCommand; state=${status.value}")')
+    replace_once(service, "private suspend fun startService() {", 'private suspend fun startService() {\n        VProxiesDiagnostics.record(service, "SERVICE_SETUP", "Preparing foreground notification and selected profile")')
+    replace_once(service, "val content = File(profile.typed.path).readText()", 'VProxiesDiagnostics.record(service, "PROFILE_READ", "Reading selected profile")\n            val content = File(profile.typed.path).readText()')
+    replace_once(service, "commandServer.startOrReloadService(", 'VProxiesDiagnostics.record(service, "CORE_START", "Starting native VPN runtime")\n                commandServer.startOrReloadService(')
+    replace_once(service, "status.postValue(Status.Started)", 'VProxiesDiagnostics.record(service, "SERVICE_STARTED", "Native VPN runtime started")\n            status.postValue(Status.Started)')
+    replace_once(service, "private suspend fun stopAndAlert(type: Alert, message: String? = null) {", 'private suspend fun stopAndAlert(type: Alert, message: String? = null) {\n        VProxiesDiagnostics.record(service, "SERVICE_ERROR", "${type.name}: ${message ?: "No error detail"}", true)')
+    replace_once(service, "private fun stopService() {", 'private fun stopService() {\n        VProxiesDiagnostics.record(service, "SERVICE_STOP", "Stop received; state=${status.value}")')
 
     replace_once(
         client / "app/build.gradle.kts",
@@ -127,7 +139,7 @@ def main() -> None:
     tree.write(manifest, encoding="utf-8", xml_declaration=True)
 
     (client / "version.properties").write_text(
-        "VERSION_CODE=3\nVERSION_NAME=0.6.2-preview\nGO_VERSION=go1.26.7\n",
+        "VERSION_CODE=4\nVERSION_NAME=0.6.3-diagnostic\nGO_VERSION=go1.26.7\n",
         encoding="utf-8",
     )
 

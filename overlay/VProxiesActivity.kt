@@ -74,6 +74,7 @@ class VProxiesActivity : AppCompatActivity(), ServiceConnection.Callback {
     private var coreStatus = Status.Stopped
     private var startRequested = false
     private var stopAfterStart = false
+    private var connectionAttemptAt = 0L
     private val ui = VProxiesUiState()
     private lateinit var secureStore: VProxiesSecureStore
     private lateinit var updater: VProxiesUpdater
@@ -141,6 +142,7 @@ class VProxiesActivity : AppCompatActivity(), ServiceConnection.Callback {
         Settings.serviceMode = ServiceMode.VPN
         coreConnection = ServiceConnection(this, this)
         coreConnection.connect()
+        VProxiesDiagnostics.record(this, "APP_BIND", "v0.6.3-diagnostic; observing VPNService")
         restoreRememberedFields()
         refreshAlwaysOnStatus()
         lifecycleScope.launch {
@@ -163,6 +165,7 @@ class VProxiesActivity : AppCompatActivity(), ServiceConnection.Callback {
         runOnUiThread {
             val previous = coreStatus
             coreStatus = status
+            VProxiesDiagnostics.record(this, "UI_CALLBACK", "${previous.name} -> ${status.name}")
             if (status != Status.Stopped || previous != Status.Stopped) startRequested = false
             ui.coreStatus = status
             when (status) {
@@ -349,6 +352,13 @@ class VProxiesActivity : AppCompatActivity(), ServiceConnection.Callback {
     private suspend fun webRequest(method: String, p: JSONObject): Any {
         return when (method) {
             "snapshot" -> {
+                // Read the binder's current state as well as observing callbacks.
+                val actual = runCatching { coreConnection.status }.getOrNull()
+                if (actual != null && actual != coreStatus && !(startRequested && actual == Status.Stopped))
+                    onServiceStatusChanged(actual)
+                val serviceError = VProxiesDiagnostics.latestError(this, connectionAttemptAt)
+                if (serviceError != null && coreStatus == Status.Stopped && ui.statusMessage != serviceError)
+                    setStatus(serviceError, true)
                 val tx = android.net.TrafficStats.getUidTxBytes(android.os.Process.myUid()).coerceAtLeast(0)
                 val rx = android.net.TrafficStats.getUidRxBytes(android.os.Process.myUid()).coerceAtLeast(0)
                 val now = android.os.SystemClock.elapsedRealtime()
@@ -369,7 +379,10 @@ class VProxiesActivity : AppCompatActivity(), ServiceConnection.Callback {
                     .put("alwaysOn", ui.alwaysOnEnabled).put("account", webAccount ?: JSONObject.NULL)
                     .put("logs", JSONArray(ui.logs.map { JSONObject().put("id", "${it.time}-${it.message.hashCode()}")
                         .put("timestamp", it.time).put("level", if (it.level in listOf("INFO","WARN","ERROR","SUCCESS")) it.level else "INFO")
-                        .put("tag", "Android").put("message", it.message) }))
+                        .put("tag", "Android").put("message", it.message) }).apply {
+                            val serviceEvents = VProxiesDiagnostics.events(this@VProxiesActivity)
+                            for (i in serviceEvents.length() - 1 downTo 0) put(serviceEvents.getJSONObject(i))
+                        })
             }
             "login" -> apiLock.withLock {
                 val candidate = ApiClient(getSystemService(ConnectivityManager::class.java))
@@ -395,6 +408,8 @@ class VProxiesActivity : AppCompatActivity(), ServiceConnection.Callback {
             "connect" -> {
                 require(!webPreparing && !startRequested && pendingConfig == null && coreStatus == Status.Stopped) { "Disconnect before switching proxy." }
                 val generation = ++webGeneration
+                connectionAttemptAt = System.currentTimeMillis()
+                VProxiesDiagnostics.record(this, "BUTTON_CONNECT", "Connect request received")
                 webPreparing = true
                 busy(true, "Requesting connection details…")
                 try {
@@ -434,6 +449,7 @@ class VProxiesActivity : AppCompatActivity(), ServiceConnection.Callback {
                 } finally { webPreparing = false; busy(false) }
             }
             "disconnect", "logout" -> {
+                VProxiesDiagnostics.record(this, "BUTTON_STOP", "Explicit $method request received")
                 refreshAlwaysOnStatus()
                 require(!ui.alwaysOnEnabled) { "Disable Always-on VPN in Android settings before disconnecting." }
                 webGeneration++
@@ -808,6 +824,7 @@ class VProxiesActivity : AppCompatActivity(), ServiceConnection.Callback {
         stopAfterStart = false
         pendingConfig = null
         setStatus("Starting VPN…")
+        VProxiesDiagnostics.record(this, "START_REQUEST", "VPN permission granted; requesting foreground service")
         runCatching { BoxService.start() }.onFailure {
             startRequested = false
             setStatus("Unable to start VPN: ${it.message}", true)

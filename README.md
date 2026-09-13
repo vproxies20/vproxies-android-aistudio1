@@ -7,6 +7,12 @@ The native overlay is adapted from vproxies20/vproxies-android commit
 
 ## Preview build
 
+Version 0.6.3 is a diagnostic build, not a confirmed device connectivity fix.
+It journals Connect/Stop requests, service startup stages and startup errors at
+their source, independently of UI callbacks. These local events appear in Logs.
+The real React buttons and bridge now have interaction regression tests; Android
+responses are substituted in those tests, so they do not validate a real tunnel.
+
 Version 0.6.2 selects VPN mode before binding the service observer, so fresh installs
 receive status and startup errors from VPNService instead of the idle ProxyService.
 Connection notices now reflect native permission/startup state. Stop requests during
