@@ -33,6 +33,9 @@ def main() -> None:
     shutil.copy2(activity_src, activity_dst)
     shutil.copy2(overlay / "VProxiesWebSurface.kt", activity_dst.parent / "VProxiesWebSurface.kt")
     shutil.copy2(overlay / "VProxiesDiagnostics.kt", activity_dst.parent / "VProxiesDiagnostics.kt")
+    test_dst = client / "app/src/androidTest/java/io/nekohasekai/sfa/vproxies"
+    test_dst.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(overlay.parent / "tests/android/VpnStartupInstrumentation.kt", test_dst / "VpnStartupInstrumentation.kt")
     shutil.copytree(overlay.parent / "dist", client / "app/src/main/assets/web", dirs_exist_ok=True)
     shutil.copy2(overlay / "VProxiesFrontend.kt", activity_dst.parent / "VProxiesFrontend.kt")
     shutil.copy2(overlay / "VProxiesSecureStore.kt", activity_dst.parent / "VProxiesSecureStore.kt")
@@ -58,7 +61,7 @@ def main() -> None:
     replace_once(
         client / "app/build.gradle.kts",
         'applicationId = "io.nekohasekai.sfa"',
-        'applicationId = "app.vproxies.aistudio"',
+        'applicationId = "app.vproxies.aistudio"\n        testInstrumentationRunner = "io.nekohasekai.sfa.vproxies.VpnStartupInstrumentation"',
     )
     replace_once(
         client / "app/build.gradle.kts",
